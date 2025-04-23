@@ -1,18 +1,28 @@
-const express = require('express');
-const ragController = require('../controllers/ragController');
+import express from 'express';
+import * as ragController from '../controllers/ragController.js';
+import * as chatController from '../controllers/chatController.js';
 
 const router = express.Router();
 
-// RAG endpoint to query the model with context
+// Core RAG routes
 router.post('/query', ragController.queryWithContext);
-
-// RAG endpoint to query the model with streaming response
 router.get('/query/stream', ragController.streamQueryWithContext);
 
-// Endpoint to add documents to the knowledge base
+// Document management routes
 router.post('/add-document', ragController.addDocument);
-
-// Get all documents in the knowledge base
+router.post('/upload-files', ragController.uploadFiles);
 router.get('/documents', ragController.getAllDocuments);
+router.post('/sync-utils-data', ragController.syncUtilsDataFiles);
+router.post('/import-employee-data', ragController.importEmployeeData);
+router.delete('/documents', ragController.deleteAllDocuments);
 
-module.exports = router; 
+// Chat routes
+router.post('/chat', chatController.processChatMessage);
+router.get('/chat/:conversationId/history', chatController.getChatHistory);
+router.delete('/chat/:conversationId', chatController.clearConversation);
+router.get('/chat/conversations', chatController.getConversations);
+
+// Clear all data
+router.delete('/clear-all-data', chatController.clearAllData);
+
+export default router; 

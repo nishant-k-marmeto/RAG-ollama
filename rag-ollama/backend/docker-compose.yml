@@ -1,0 +1,16 @@
+services:
+  chromadb:
+    image: ghcr.io/chroma-core/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/chroma/chroma
+    environment:
+      - ALLOW_RESET=true
+      - CHROMA_SERVER_CORS_ALLOW_ORIGINS=*
+      - CHROMA_SERVER_AUTH_CREDENTIALS_ENABLE=false
+    restart: unless-stopped
+
+volumes:
+  chroma-data:
+    driver: local 

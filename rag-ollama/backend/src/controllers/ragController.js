@@ -1,13 +1,21 @@
-const ragService = require('../services/ragService');
+import * as ragService from '../services/ragService.js';
+import { getOrCreateCollection, deleteAllDocuments as deleteAllChromaDocuments } from '../utils/chromadb.js';
+import { addFilesToCollection } from '../utils/data_loader.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import csv from 'csv-parser';
 
-// In-memory document store for demo purposes
-// In a real application, you'd use a database
+// Collection name for ChromaDB
+const COLLECTION_NAME = 'rag_documents';
+
+// In-memory document store for fallback
 const documents = [];
 
 /**
  * Query the LLM with relevant context from documents
  */
-const queryWithContext = async (req, res) => {
+export const queryWithContext = async (req, res) => {
   try {
     const { query } = req.body;
     
@@ -21,14 +29,14 @@ const queryWithContext = async (req, res) => {
     return res.status(200).json({ response });
   } catch (error) {
     console.error('Error in RAG query:', error);
-    return res.status(500).json({ error: 'Failed to process query' });
+    return res.status(500).json({ error: 'Failed to process query: ' + error.message });
   }
 };
 
 /**
  * Query the LLM with relevant context from documents and stream the response
  */
-const streamQueryWithContext = async (req, res) => {
+export const streamQueryWithContext = async (req, res) => {
   try {
     const query = req.query.query;
     
@@ -51,15 +59,15 @@ const streamQueryWithContext = async (req, res) => {
     res.end();
   } catch (error) {
     console.error('Error in streaming RAG query:', error);
-    res.write(`data: ${JSON.stringify({ error: 'Error generating response' })}\n\n`);
+    res.write(`data: ${JSON.stringify({ error: 'Error generating response: ' + error.message })}\n\n`);
     res.end();
   }
 };
 
 /**
- * Add a document to the knowledge base
+ * Add a document directly to the knowledge base
  */
-const addDocument = async (req, res) => {
+export const addDocument = async (req, res) => {
   try {
     const { title, content } = req.body;
     
@@ -74,30 +82,352 @@ const addDocument = async (req, res) => {
       createdAt: new Date().toISOString()
     };
     
+    // Add to in-memory store (fallback)
     documents.push(newDoc);
+    
+    // Add to ChromaDB
+    try {
+      const collection = await getOrCreateCollection(COLLECTION_NAME);
+      await collection.add({
+        ids: [newDoc.id],
+        documents: [newDoc.content],
+        metadatas: [{ 
+          source: newDoc.title, 
+          type: 'manual',
+          created: newDoc.createdAt
+        }],
+      });
+      console.log(`Added document to ChromaDB: ${newDoc.title}`);
+    } catch (error) {
+      console.error('Failed to add document to ChromaDB:', error);
+      // Continue with in-memory fallback
+    }
     
     return res.status(201).json({ message: 'Document added successfully', document: newDoc });
   } catch (error) {
     console.error('Error adding document:', error);
-    return res.status(500).json({ error: 'Failed to add document' });
+    return res.status(500).json({ error: 'Failed to add document: ' + error.message });
+  }
+};
+
+/**
+ * Upload files (PDFs, CSVs) to the knowledge base
+ */
+export const uploadFiles = async (req, res) => {
+  try {
+    const { directory } = req.body;
+    
+    if (!directory) {
+      return res.status(400).json({ error: 'Directory path is required' });
+    }
+    
+    // Ensure the directory exists
+    if (!fs.existsSync(directory)) {
+      return res.status(400).json({ error: 'Directory does not exist' });
+    }
+    
+    try {
+      const collection = await getOrCreateCollection(COLLECTION_NAME);
+      const count = await addFilesToCollection(directory, collection);
+      
+      return res.status(200).json({ 
+        message: `Successfully added ${count} files to the knowledge base`,
+        count
+      });
+    } catch (error) {
+      console.error('Error uploading files:', error);
+      return res.status(500).json({ error: 'Failed to process files: ' + error.message });
+    }
+  } catch (error) {
+    console.error('Error handling file upload:', error);
+    return res.status(500).json({ error: 'Failed to upload files: ' + error.message });
   }
 };
 
 /**
  * Retrieve all documents in the knowledge base
  */
-const getAllDocuments = (req, res) => {
+export const getAllDocuments = async (req, res) => {
   try {
+    // Try to get documents from ChromaDB
+    try {
+      const collection = await getOrCreateCollection(COLLECTION_NAME);
+      const result = await collection.get();
+      
+      if (result && result.ids && result.ids.length > 0) {
+        const chromaDocuments = result.ids.map((id, index) => ({
+          id,
+          title: result.metadatas[index]?.source || `Document ${index + 1}`,
+          content: result.documents[index].substring(0, 150) + '...',
+          createdAt: result.metadatas[index]?.created || new Date().toISOString()
+        }));
+        
+        return res.status(200).json({ documents: chromaDocuments });
+      }
+    } catch (error) {
+      console.error('Error getting documents from ChromaDB:', error);
+      // Fall back to in-memory documents
+    }
+    
     return res.status(200).json({ documents });
   } catch (error) {
     console.error('Error getting documents:', error);
-    return res.status(500).json({ error: 'Failed to retrieve documents' });
+    return res.status(500).json({ error: 'Failed to retrieve documents: ' + error.message });
   }
 };
 
-module.exports = {
-  queryWithContext,
-  streamQueryWithContext,
-  addDocument,
-  getAllDocuments
+/**
+ * Delete all documents from the knowledge base
+ */
+export const deleteAllDocuments = async (req, res) => {
+  try {
+    // Clear in-memory documents
+    documents.length = 0;
+    
+    // Clear ChromaDB documents
+    try {
+      const collection = await getOrCreateCollection(COLLECTION_NAME);
+      await deleteAllChromaDocuments(collection);
+      
+      return res.status(200).json({ 
+        success: true, 
+        message: 'All documents deleted successfully from the knowledge base'
+      });
+    } catch (error) {
+      console.error('Error deleting documents from ChromaDB:', error);
+      return res.status(500).json({ error: 'Failed to delete documents from ChromaDB: ' + error.message });
+    }
+  } catch (error) {
+    console.error('Error deleting all documents:', error);
+    return res.status(500).json({ error: 'Failed to delete all documents: ' + error.message });
+  }
+};
+
+/**
+ * Import employee attendance data from utils-data directory
+ */
+export const importEmployeeData = async (req, res) => {
+  try {
+    // Get directory path
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const utilsDataDir = path.join(__dirname, '../../utils-data');
+    
+    // Path to employee attendance file
+    const employeeFilePath = path.join(utilsDataDir, 'Employee present_absent status.txt');
+    
+    // Check if file exists
+    if (!fs.existsSync(employeeFilePath)) {
+      return res.status(404).json({ error: 'Employee attendance file not found' });
+    }
+    
+    // Get the collection
+    const collection = await getOrCreateCollection(COLLECTION_NAME);
+    
+    // Read file content
+    const fileContent = fs.readFileSync(employeeFilePath, 'utf8');
+    const lines = fileContent.split('\n');
+    
+    // Group lines into chunks of approximately 500 chars each
+    const chunks = [];
+    let currentChunk = '';
+    let chunkId = 1;
+    const fileId = `employee-attendance-data`;
+    
+    for (const line of lines) {
+      if (line.trim().length === 0) continue;
+      
+      if (currentChunk.length + line.length > 500 && currentChunk.length > 0) {
+        chunks.push({
+          id: `${fileId}-chunk-${chunkId}`,
+          content: currentChunk.trim(),
+          metadata: {
+            source: 'Employee Attendance Data',
+            chunk: chunkId,
+            type: 'text'
+          }
+        });
+        chunkId++;
+        currentChunk = '';
+      }
+      
+      currentChunk += line + '\n';
+    }
+    
+    // Add the last chunk if not empty
+    if (currentChunk.trim().length > 0) {
+      chunks.push({
+        id: `${fileId}-chunk-${chunkId}`,
+        content: currentChunk.trim(),
+        metadata: {
+          source: 'Employee Attendance Data',
+          chunk: chunkId,
+          type: 'text'
+        }
+      });
+    }
+    
+    // Add chunks to collection
+    if (chunks.length > 0) {
+      try {
+        await collection.add({
+          ids: chunks.map(chunk => chunk.id),
+          documents: chunks.map(chunk => chunk.content),
+          metadatas: chunks.map(chunk => chunk.metadata)
+        });
+      } catch (error) {
+        console.error(`Failed to add employee attendance chunks to ChromaDB:`, error);
+        return res.status(500).json({ error: 'Failed to add chunks to ChromaDB: ' + error.message });
+      }
+    }
+    
+    return res.status(200).json({ 
+      message: `Successfully imported employee attendance data`,
+      chunks: chunks.length
+    });
+  } catch (error) {
+    console.error('Error importing employee data:', error);
+    return res.status(500).json({ error: 'Failed to import employee data: ' + error.message });
+  }
+};
+
+/**
+ * Sync files from utils-data directory to the knowledge base
+ */
+export const syncUtilsDataFiles = async (req, res) => {
+  try {
+    // Get directory path
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const utilsDataDir = path.join(__dirname, '../../utils-data');
+    
+    // Ensure the directory exists
+    if (!fs.existsSync(utilsDataDir)) {
+      return res.status(404).json({ error: 'Utils-data directory not found' });
+    }
+    
+    // Get the collection
+    const collection = await getOrCreateCollection(COLLECTION_NAME);
+    
+    // Get list of files
+    const files = fs.readdirSync(utilsDataDir);
+    const processedFiles = [];
+    let totalChunks = 0;
+    
+    // Process each file
+    for (const file of files) {
+      const filePath = path.join(utilsDataDir, file);
+      const fileStats = fs.statSync(filePath);
+      
+      // Skip directories
+      if (fileStats.isDirectory()) continue;
+      
+      const fileExt = path.extname(file).toLowerCase();
+      const fileName = path.basename(file);
+      const fileId = `utils-data-${fileName.replace(/\s+/g, '-')}`;
+      
+      // Process based on file type
+      if (fileExt === '.csv') {
+        // Process CSV file
+        console.log(`Processing CSV file: ${fileName}`);
+        const rows = [];
+        await new Promise((resolve, reject) => {
+          fs.createReadStream(filePath)
+            .pipe(csv())
+            .on('data', (row) => rows.push(row))
+            .on('end', () => resolve())
+            .on('error', reject);
+        });
+        
+        // Convert to string representation
+        const content = rows.map(row => {
+          return Object.entries(row)
+            .map(([key, value]) => `${key}: ${value}`)
+            .join(', ');
+        }).join('\n');
+        
+        // Add to collection
+        await collection.add({
+          ids: [fileId],
+          documents: [content],
+          metadatas: [{ 
+            source: fileName, 
+            type: 'csv',
+            created: new Date().toISOString(),
+            size: fileStats.size
+          }],
+        });
+        
+        processedFiles.push({ name: fileName, type: 'csv', chunks: 1 });
+        totalChunks++;
+      } else if (fileExt === '.txt') {
+        // Process text files
+        const fileContent = fs.readFileSync(filePath, 'utf8');
+        const lines = fileContent.split('\n');
+        
+        // Group lines into chunks of approximately 500 chars each
+        const chunks = [];
+        let currentChunk = '';
+        let chunkId = 1;
+        
+        for (const line of lines) {
+          if (line.trim().length === 0) continue;
+          
+          if (currentChunk.length + line.length > 500 && currentChunk.length > 0) {
+            chunks.push({
+              id: `${fileId}-chunk-${chunkId}`,
+              content: currentChunk.trim(),
+              metadata: {
+                source: fileName,
+                chunk: chunkId,
+                type: 'text'
+              }
+            });
+            chunkId++;
+            currentChunk = '';
+          }
+          
+          currentChunk += line + '\n';
+        }
+        
+        // Add the last chunk if not empty
+        if (currentChunk.trim().length > 0) {
+          chunks.push({
+            id: `${fileId}-chunk-${chunkId}`,
+            content: currentChunk.trim(),
+            metadata: {
+              source: fileName,
+              chunk: chunkId,
+              type: 'text'
+            }
+          });
+        }
+        
+        // Add chunks to collection
+        if (chunks.length > 0) {
+          try {
+            await collection.add({
+              ids: chunks.map(chunk => chunk.id),
+              documents: chunks.map(chunk => chunk.content),
+              metadatas: chunks.map(chunk => chunk.metadata)
+            });
+          } catch (error) {
+            console.error(`Failed to add ${fileName} chunks to ChromaDB:`, error);
+          }
+        }
+        
+        processedFiles.push({ name: fileName, type: 'text', chunks: chunks.length });
+        totalChunks += chunks.length;
+      }
+    }
+    
+    return res.status(200).json({ 
+      message: `Successfully synced ${processedFiles.length} files from utils-data directory`,
+      files: processedFiles,
+      totalChunks
+    });
+  } catch (error) {
+    console.error('Error syncing utils-data files:', error);
+    return res.status(500).json({ error: 'Failed to sync files: ' + error.message });
+  }
 }; 

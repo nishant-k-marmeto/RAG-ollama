@@ -2,9 +2,17 @@
   "name": "backend",
   "version": "1.0.0",
   "main": "src/index.js",
+  "type": "module",
   "scripts": {
     "start": "node --inspect --watch src/index.js",
     "dev": "node --inspect --watch src/index.js",
+    "start:chroma": "docker-compose up -d",
+    "stop:chroma": "docker-compose down",
+    "check:chroma": "node src/scripts/check-chroma.js",
+    "add:chroma-samples": "node src/scripts/add-to-chroma.js",
+    "query:chroma": "node src/scripts/query-chroma.js",
+    "import:csv-to-chroma": "node src/scripts/import-csv-to-chroma.js",
+    "dev:all": "concurrently \"npm run start:chroma\" \"npm run dev\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -17,12 +25,16 @@
     "chromadb": "^2.2.1",
     "chromadb-default-embed": "^2.14.0",
     "cors": "^2.8.5",
+    "csv-parser": "^3.2.0",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "nodemon": "^3.1.9",
-    "ollama": "^0.4.8"
+    "ollama": "^0.4.8",
+    "pdf-parse": "^1.1.1"
   },
   "devDependencies": {
+    "@types/node": "^22.14.1",
+    "concurrently": "^9.1.2",
     "nodemon": "^3.1.9"
   }
 }

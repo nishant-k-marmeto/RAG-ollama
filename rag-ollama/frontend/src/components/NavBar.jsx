@@ -1,24 +1,25 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 const NavBar = () => {
+  const location = useLocation();
+  
   return (
-    <nav style={{ 
-      display: 'flex', 
-      justifyContent: 'space-between', 
-      padding: '1rem', 
-      backgroundColor: '#333', 
-      color: 'white',
-      marginBottom: '2rem',
-      borderRadius: '8px'
-    }}>
-      <div className="logo">
-        <h2>RAG Ollama</h2>
+    <nav className="navbar">
+      <div className="navbar-brand">
+        <Link to="/">RAG System</Link>
       </div>
-      <div className="nav-links" style={{ display: 'flex', gap: '1rem' }}>
-        <Link to="/" style={{ color: 'white' }}>Chat</Link>
-        <Link to="/documents" style={{ color: 'white' }}>Documents</Link>
-      </div>
+      <ul className="navbar-nav">
+        <li className={`nav-item ${location.pathname === '/' ? 'active' : ''}`}>
+          <Link to="/">Home</Link>
+        </li>
+        <li className={`nav-item ${location.pathname === '/documents' ? 'active' : ''}`}>
+          <Link to="/documents">Documents</Link>
+        </li>
+        <li className={`nav-item ${location.pathname === '/chat' ? 'active' : ''}`}>
+          <Link to="/chat">Chat</Link>
+        </li>
+      </ul>
     </nav>
   );
 };

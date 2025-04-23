@@ -59,3 +59,4 @@ Thumbs.db
 
 # Yarn integrity file
 .yarn-integrity 
+.early.coverage
