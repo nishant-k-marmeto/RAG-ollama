@@ -430,4 +430,123 @@ export const syncUtilsDataFiles = async (req, res) => {
     console.error('Error syncing utils-data files:', error);
     return res.status(500).json({ error: 'Failed to sync files: ' + error.message });
   }
+};
+
+/**
+ * Upload file content directly to the knowledge base
+ * This endpoint allows sending raw file content instead of uploading a physical file
+ */
+export const uploadFileContent = async (req, res) => {
+  try {
+    const { fileName, content, fileType = 'text' } = req.body;
+    
+    if (!fileName || !content) {
+      return res.status(400).json({ error: 'File name and content are required' });
+    }
+    
+    // Get the collection
+    const collection = await getOrCreateCollection(COLLECTION_NAME);
+    
+    const fileId = `content-upload-${fileName.replace(/\s+/g, '-')}-${Date.now()}`;
+    let documentChunks = [];
+    let totalChunks = 0;
+    
+    if (fileType === 'csv') {
+      // Process as CSV data
+      try {
+        // Parse the CSV content into structured data
+        // This is simplified - in production you'd use a CSV parser
+        const rows = content.split('\n').map(row => {
+          const values = row.split(',');
+          return values.join(', ');
+        });
+        
+        const csvContent = rows.join('\n');
+        
+        // Add to collection as a single document
+        await collection.add({
+          ids: [fileId],
+          documents: [csvContent],
+          metadatas: [{ 
+            source: fileName, 
+            type: 'csv',
+            created: new Date().toISOString()
+          }],
+        });
+        
+        totalChunks = 1;
+        documentChunks.push({ id: fileId, type: 'csv' });
+      } catch (error) {
+        console.error('Error processing CSV content:', error);
+        return res.status(400).json({ error: 'Failed to process CSV content: ' + error.message });
+      }
+    } else {
+      // Process as plain text - split into chunks
+      const lines = content.split('\n');
+      
+      // Group lines into chunks of approximately 500 chars each
+      const chunks = [];
+      let currentChunk = '';
+      let chunkId = 1;
+      
+      for (const line of lines) {
+        if (line.trim().length === 0) continue;
+        
+        if (currentChunk.length + line.length > 50000 && currentChunk.length > 0) {
+          chunks.push({
+            id: `${fileId}-chunk-${chunkId}`,
+            content: currentChunk.trim(),
+            metadata: {
+              source: fileName,
+              chunk: chunkId,
+              type: 'text'
+            }
+          });
+          chunkId++;
+          currentChunk = '';
+        }
+        
+        currentChunk += line + '\n';
+      }
+      
+      // Add the last chunk if not empty
+      if (currentChunk.trim().length > 0) {
+        chunks.push({
+          id: `${fileId}-chunk-${chunkId}`,
+          content: currentChunk.trim(),
+          metadata: {
+            source: fileName,
+            chunk: chunkId,
+            type: 'text'
+          }
+        });
+      }
+      
+      // Add chunks to collection
+      if (chunks.length > 0) {
+        try {
+          await collection.add({
+            ids: chunks.map(chunk => chunk.id),
+            documents: chunks.map(chunk => chunk.content),
+            metadatas: chunks.map(chunk => chunk.metadata)
+          });
+          
+          totalChunks = chunks.length;
+          documentChunks = chunks.map(chunk => ({ id: chunk.id, type: 'text' }));
+        } catch (error) {
+          console.error(`Failed to add content chunks to ChromaDB:`, error);
+          return res.status(500).json({ error: 'Failed to add chunks to ChromaDB: ' + error.message });
+        }
+      }
+    }
+    
+    return res.status(200).json({ 
+      message: `Successfully uploaded content as ${fileName}`,
+      chunks: totalChunks,
+      documents: documentChunks
+    });
+  } catch (error) {
+    console.error('Error uploading file content:', error);
+    return res.status(500).json({ error: 'Failed to upload file content: ' + error.message });
+  }
 }; 

@@ -5,7 +5,7 @@ import { getOrCreateCollection, queryCollection } from '../utils/chromadb.js';
 const ollama = new Ollama();
 
 // Collection name for ChromaDB
-const COLLECTION_NAME = 'nishant-collection';
+const COLLECTION_NAME = 'rag_documents';
 
 // In-memory conversation storage (in production, use a database)
 const conversations = new Map();
@@ -111,7 +111,7 @@ async function chatWithContext(conversationId, userMessage, useChainOfThought = 
     
     // Create system message with instructions
     let systemPrompt = `You are a helpful AI assistant with access to a knowledge base. 
-Use the following context information to answer the user's questions.
+Use the following context information to answer the user's questions. Please answer in an elaborative way and always use bullets and points when appropriate.
 If the answer is not in the context information, just say "I don't have enough information to answer this question" and suggest what other information would be helpful.`;
     
     // Add chain-of-thought instructions if enabled
