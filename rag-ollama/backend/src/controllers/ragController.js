@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import csv from 'csv-parser';
+import axios from 'axios';
 
 // Collection name for ChromaDB
 const COLLECTION_NAME = 'rag_documents';
@@ -204,94 +205,6 @@ export const deleteAllDocuments = async (req, res) => {
 };
 
 /**
- * Import employee attendance data from utils-data directory
- */
-export const importEmployeeData = async (req, res) => {
-  try {
-    // Get directory path
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    const utilsDataDir = path.join(__dirname, '../../utils-data');
-    
-    // Path to employee attendance file
-    const employeeFilePath = path.join(utilsDataDir, 'Employee present_absent status.txt');
-    
-    // Check if file exists
-    if (!fs.existsSync(employeeFilePath)) {
-      return res.status(404).json({ error: 'Employee attendance file not found' });
-    }
-    
-    // Get the collection
-    const collection = await getOrCreateCollection(COLLECTION_NAME);
-    
-    // Read file content
-    const fileContent = fs.readFileSync(employeeFilePath, 'utf8');
-    const lines = fileContent.split('\n');
-    
-    // Group lines into chunks of approximately 500 chars each
-    const chunks = [];
-    let currentChunk = '';
-    let chunkId = 1;
-    const fileId = `employee-attendance-data`;
-    
-    for (const line of lines) {
-      if (line.trim().length === 0) continue;
-      
-      if (currentChunk.length + line.length > 500 && currentChunk.length > 0) {
-        chunks.push({
-          id: `${fileId}-chunk-${chunkId}`,
-          content: currentChunk.trim(),
-          metadata: {
-            source: 'Employee Attendance Data',
-            chunk: chunkId,
-            type: 'text'
-          }
-        });
-        chunkId++;
-        currentChunk = '';
-      }
-      
-      currentChunk += line + '\n';
-    }
-    
-    // Add the last chunk if not empty
-    if (currentChunk.trim().length > 0) {
-      chunks.push({
-        id: `${fileId}-chunk-${chunkId}`,
-        content: currentChunk.trim(),
-        metadata: {
-          source: 'Employee Attendance Data',
-          chunk: chunkId,
-          type: 'text'
-        }
-      });
-    }
-    
-    // Add chunks to collection
-    if (chunks.length > 0) {
-      try {
-        await collection.add({
-          ids: chunks.map(chunk => chunk.id),
-          documents: chunks.map(chunk => chunk.content),
-          metadatas: chunks.map(chunk => chunk.metadata)
-        });
-      } catch (error) {
-        console.error(`Failed to add employee attendance chunks to ChromaDB:`, error);
-        return res.status(500).json({ error: 'Failed to add chunks to ChromaDB: ' + error.message });
-      }
-    }
-    
-    return res.status(200).json({ 
-      message: `Successfully imported employee attendance data`,
-      chunks: chunks.length
-    });
-  } catch (error) {
-    console.error('Error importing employee data:', error);
-    return res.status(500).json({ error: 'Failed to import employee data: ' + error.message });
-  }
-};
-
-/**
  * Sync files from utils-data directory to the knowledge base
  */
 export const syncUtilsDataFiles = async (req, res) => {
@@ -365,7 +278,7 @@ export const syncUtilsDataFiles = async (req, res) => {
         const fileContent = fs.readFileSync(filePath, 'utf8');
         const lines = fileContent.split('\n');
         
-        // Group lines into chunks of approximately 500 chars each
+        // Group lines into chunks of approximately 4500 chars each
         const chunks = [];
         let currentChunk = '';
         let chunkId = 1;
@@ -373,7 +286,7 @@ export const syncUtilsDataFiles = async (req, res) => {
         for (const line of lines) {
           if (line.trim().length === 0) continue;
           
-          if (currentChunk.length + line.length > 500 && currentChunk.length > 0) {
+          if (currentChunk.length + line.length > 4500 && currentChunk.length > 0) {
             chunks.push({
               id: `${fileId}-chunk-${chunkId}`,
               content: currentChunk.trim(),
@@ -413,6 +326,7 @@ export const syncUtilsDataFiles = async (req, res) => {
             });
           } catch (error) {
             console.error(`Failed to add ${fileName} chunks to ChromaDB:`, error);
+            // Error is caught but NOT returned to the client
           }
         }
         
@@ -484,7 +398,7 @@ export const uploadFileContent = async (req, res) => {
       // Process as plain text - split into chunks
       const lines = content.split('\n');
       
-      // Group lines into chunks of approximately 500 chars each
+      // Group lines into chunks of approximately 4500 chars each
       const chunks = [];
       let currentChunk = '';
       let chunkId = 1;
@@ -492,7 +406,7 @@ export const uploadFileContent = async (req, res) => {
       for (const line of lines) {
         if (line.trim().length === 0) continue;
         
-        if (currentChunk.length + line.length > 50000 && currentChunk.length > 0) {
+        if (currentChunk.length + line.length > 4500 && currentChunk.length > 0) {
           chunks.push({
             id: `${fileId}-chunk-${chunkId}`,
             content: currentChunk.trim(),
@@ -548,5 +462,109 @@ export const uploadFileContent = async (req, res) => {
   } catch (error) {
     console.error('Error uploading file content:', error);
     return res.status(500).json({ error: 'Failed to upload file content: ' + error.message });
+  }
+};
+
+/**
+ * Check ChromaDB status and return information about collections
+ */
+export const checkChromaStatus = async (req, res) => {
+  try {
+    // ChromaDB typically runs on port 8000
+    const chromaUrl = process.env.CHROMA_URL || 'http://localhost:8000';
+    
+    try {
+      // Try different API versions for heartbeat
+      let heartbeatResponse;
+      let apiVersion;
+      
+      // First try API v2 (what the rest of the codebase uses)
+      try {
+        heartbeatResponse = await axios.get(`${chromaUrl}/api/v2/heartbeat`);
+        apiVersion = 'v2';
+      } catch (v2Error) {
+        console.log('ChromaDB v2 API not available, trying other versions...');
+        
+        // Try API v1
+        try {
+          heartbeatResponse = await axios.get(`${chromaUrl}/api/v1/heartbeat`);
+          apiVersion = 'v1';
+        } catch (v1Error) {
+          // Try API without version prefix (newer versions)
+          try {
+            heartbeatResponse = await axios.get(`${chromaUrl}/heartbeat`);
+            apiVersion = 'latest';
+          } catch (noVersionError) {
+            // Try legacy endpoint
+            try {
+              heartbeatResponse = await axios.get(`${chromaUrl}/api/heartbeat`);
+              apiVersion = 'legacy';
+            } catch (legacyError) {
+              throw new Error('No valid ChromaDB API endpoint found');
+            }
+          }
+        }
+      }
+      
+      console.log(`Connected to ChromaDB using API ${apiVersion}`);
+      
+      // Get collections information based on API version
+      let collections = [];
+      try {
+        let collectionsResponse;
+        if (apiVersion === 'v2') {
+          collectionsResponse = await axios.get(`${chromaUrl}/api/v2/collections`);
+        } else if (apiVersion === 'v1') {
+          collectionsResponse = await axios.get(`${chromaUrl}/api/v1/collections`);
+        } else if (apiVersion === 'latest') {
+          collectionsResponse = await axios.get(`${chromaUrl}/collections`);
+        } else {
+          collectionsResponse = await axios.get(`${chromaUrl}/api/collections`);
+        }
+        
+        collections = collectionsResponse.data || [];
+      } catch (collectionsError) {
+        console.error('Error getting collections:', collectionsError);
+      }
+      
+      // Check our collection by using chromadb.js functions directly
+      let collectionInfo = { exists: false, count: 0 };
+      try {
+        const collection = await getOrCreateCollection(COLLECTION_NAME);
+        collectionInfo.exists = true;
+        
+        // Get document count if possible
+        try {
+          const count = await collection.count();
+          collectionInfo.count = count;
+        } catch (countErr) {
+          console.error('Error getting document count:', countErr);
+        }
+      } catch (collectionErr) {
+        console.error('Error checking collection:', collectionErr);
+      }
+      
+      return res.status(200).json({
+        status: 'connected',
+        message: 'ChromaDB is running',
+        apiVersion,
+        collections: Array.isArray(collections) ? collections.length : 'Unknown',
+        collection: {
+          name: COLLECTION_NAME,
+          exists: collectionInfo.exists,
+          documents: collectionInfo.count
+        }
+      });
+    } catch (error) {
+      console.error('ChromaDB connection error:', error);
+      return res.status(503).json({
+        status: 'disconnected',
+        message: 'ChromaDB connection failed',
+        error: error.message
+      });
+    }
+  } catch (error) {
+    console.error('Error checking ChromaDB status:', error);
+    return res.status(500).json({ error: 'Failed to check ChromaDB status: ' + error.message });
   }
 }; 
