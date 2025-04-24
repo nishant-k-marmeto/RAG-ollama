@@ -113,10 +113,6 @@ const deleteAllDocuments = async () => {
   return response.data;
 };
 
-const importEmployeeData = async () => {
-  const response = await api.post('/rag/import-employee-data');
-  return response.data;
-};
 
 const syncUtilsDataFiles = async () => {
   const response = await api.post('/rag/sync-utils-data');
@@ -186,7 +182,7 @@ const streamQueryRag = (query, onChunk, onDocuments, onError) => {
 // Chat functions
 const sendChatMessage = async (message, conversationId, useChainOfThought = false) => {
   try {
-    console.log('🔵 sendChatMessage called with:');
+    console.log(' sendChatMessage called with:');
     console.log('- message:', message);
     console.log('- conversationId:', conversationId);
     console.log('- useChainOfThought:', useChainOfThought);
@@ -275,7 +271,6 @@ export default {
   uploadFiles,
   uploadFilesClient,
   deleteAllDocuments,
-  importEmployeeData,
   syncUtilsDataFiles,
   queryWithContext,
   queryRag,
@@ -289,5 +284,6 @@ export default {
   get: api.get,
   post: api.post,
   put: api.put,
-  delete: api.delete
+  delete: api.delete,
+  baseUrl: API_BASE_URL
 }; 

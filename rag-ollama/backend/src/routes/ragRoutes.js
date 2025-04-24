@@ -33,7 +33,6 @@ router.post('/upload-files', ragController.uploadFiles);
 router.post('/upload-file-content', ragController.uploadFileContent);
 router.get('/documents', ragController.getAllDocuments);
 router.post('/sync-utils-data', ragController.syncUtilsDataFiles);
-router.post('/import-employee-data', ragController.importEmployeeData);
 router.delete('/documents', ragController.deleteAllDocuments);
 
 // ChromaDB status check

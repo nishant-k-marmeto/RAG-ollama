@@ -205,94 +205,6 @@ export const deleteAllDocuments = async (req, res) => {
 };
 
 /**
- * Import employee attendance data from utils-data directory
- */
-export const importEmployeeData = async (req, res) => {
-  try {
-    // Get directory path
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    const utilsDataDir = path.join(__dirname, '../../utils-data');
-    
-    // Path to employee attendance file
-    const employeeFilePath = path.join(utilsDataDir, 'Employee present_absent status.txt');
-    
-    // Check if file exists
-    if (!fs.existsSync(employeeFilePath)) {
-      return res.status(404).json({ error: 'Employee attendance file not found' });
-    }
-    
-    // Get the collection
-    const collection = await getOrCreateCollection(COLLECTION_NAME);
-    
-    // Read file content
-    const fileContent = fs.readFileSync(employeeFilePath, 'utf8');
-    const lines = fileContent.split('\n');
-    
-    // Group lines into chunks of approximately 500 chars each
-    const chunks = [];
-    let currentChunk = '';
-    let chunkId = 1;
-    const fileId = `employee-attendance-data`;
-    
-    for (const line of lines) {
-      if (line.trim().length === 0) continue;
-      
-      if (currentChunk.length + line.length > 500 && currentChunk.length > 0) {
-        chunks.push({
-          id: `${fileId}-chunk-${chunkId}`,
-          content: currentChunk.trim(),
-          metadata: {
-            source: 'Employee Attendance Data',
-            chunk: chunkId,
-            type: 'text'
-          }
-        });
-        chunkId++;
-        currentChunk = '';
-      }
-      
-      currentChunk += line + '\n';
-    }
-    
-    // Add the last chunk if not empty
-    if (currentChunk.trim().length > 0) {
-      chunks.push({
-        id: `${fileId}-chunk-${chunkId}`,
-        content: currentChunk.trim(),
-        metadata: {
-          source: 'Employee Attendance Data',
-          chunk: chunkId,
-          type: 'text'
-        }
-      });
-    }
-    
-    // Add chunks to collection
-    if (chunks.length > 0) {
-      try {
-        await collection.add({
-          ids: chunks.map(chunk => chunk.id),
-          documents: chunks.map(chunk => chunk.content),
-          metadatas: chunks.map(chunk => chunk.metadata)
-        });
-      } catch (error) {
-        console.error(`Failed to add employee attendance chunks to ChromaDB:`, error);
-        return res.status(500).json({ error: 'Failed to add chunks to ChromaDB: ' + error.message });
-      }
-    }
-    
-    return res.status(200).json({ 
-      message: `Successfully imported employee attendance data`,
-      chunks: chunks.length
-    });
-  } catch (error) {
-    console.error('Error importing employee data:', error);
-    return res.status(500).json({ error: 'Failed to import employee data: ' + error.message });
-  }
-};
-
-/**
  * Sync files from utils-data directory to the knowledge base
  */
 export const syncUtilsDataFiles = async (req, res) => {
@@ -366,7 +278,7 @@ export const syncUtilsDataFiles = async (req, res) => {
         const fileContent = fs.readFileSync(filePath, 'utf8');
         const lines = fileContent.split('\n');
         
-        // Group lines into chunks of approximately 500 chars each
+        // Group lines into chunks of approximately 4500 chars each
         const chunks = [];
         let currentChunk = '';
         let chunkId = 1;
@@ -374,7 +286,7 @@ export const syncUtilsDataFiles = async (req, res) => {
         for (const line of lines) {
           if (line.trim().length === 0) continue;
           
-          if (currentChunk.length + line.length > 500 && currentChunk.length > 0) {
+          if (currentChunk.length + line.length > 4500 && currentChunk.length > 0) {
             chunks.push({
               id: `${fileId}-chunk-${chunkId}`,
               content: currentChunk.trim(),
@@ -414,6 +326,7 @@ export const syncUtilsDataFiles = async (req, res) => {
             });
           } catch (error) {
             console.error(`Failed to add ${fileName} chunks to ChromaDB:`, error);
+            // Error is caught but NOT returned to the client
           }
         }
         
@@ -485,7 +398,7 @@ export const uploadFileContent = async (req, res) => {
       // Process as plain text - split into chunks
       const lines = content.split('\n');
       
-      // Group lines into chunks of approximately 500 chars each
+      // Group lines into chunks of approximately 4500 chars each
       const chunks = [];
       let currentChunk = '';
       let chunkId = 1;
@@ -493,7 +406,7 @@ export const uploadFileContent = async (req, res) => {
       for (const line of lines) {
         if (line.trim().length === 0) continue;
         
-        if (currentChunk.length + line.length > 50000 && currentChunk.length > 0) {
+        if (currentChunk.length + line.length > 4500 && currentChunk.length > 0) {
           chunks.push({
             id: `${fileId}-chunk-${chunkId}`,
             content: currentChunk.trim(),
