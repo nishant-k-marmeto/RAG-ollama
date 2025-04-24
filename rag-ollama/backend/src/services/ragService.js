@@ -6,7 +6,6 @@ const ollama = new Ollama();
 
 // Collection name for ChromaDB
 const COLLECTION_NAME = 'rag_documents';
-
 /**
  * Simple document similarity search for retrieval
  * In a real application, you would use a proper vector DB
@@ -80,6 +79,7 @@ const generateResponse = async (query, documents) => {
       if (relevantDocs.length === 0) {
         const response = await ollama.chat({
           model: 'gemma3:1b',
+          temperature: 0.5, 
           messages: [{ role: 'user', content: query }],
         });
         
@@ -90,12 +90,20 @@ const generateResponse = async (query, documents) => {
       }
       
       // Format documents as context
-      context = relevantDocs.map(doc => `Document Title: ${doc.title}\nContent: ${doc.content}`).join('\n\n');
+      context = relevantDocs.map(doc => 
+        `SOURCE: ${doc.title} (${doc.id})
+         CONTENT: ${doc.content}
+         RELEVANCE: ${doc.score}
+        `).join('\n\n');
     }
 
     // Create a prompt with the context
-    const systemPrompt = `You are a helpful AI assistant. Use the following context to answer the question.
-If the answer is not in the context, just say "I don't have enough information to answer this question" and suggest what other information would be helpful.`;
+    const systemPrompt = `You are a knowledgeable assistant with access to a specialized database.
+      When answering questions:
+      1. First analyze the context carefully
+      2. Cite specific documents when possible
+      3. Format responses with bullet points for readability
+      4. If uncertain, acknowledge limitations`;
 
     const userPrompt = `Context:
 ${context}
@@ -105,6 +113,7 @@ Question: ${query}`;
     // Generate the response using ollama
     const response = await ollama.chat({
       model: 'gemma3:1b',
+      temperature: 0.5,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -171,6 +180,7 @@ const streamGenerateResponse = async (query, documents, onChunk) => {
       if (relevantDocs.length === 0) {
         const response = await ollama.chat({
           model: 'gemma3:1b',
+          temperature: 0.5,
           messages: [{ role: 'user', content: query }],
           stream: true
         });
@@ -183,12 +193,16 @@ const streamGenerateResponse = async (query, documents, onChunk) => {
       }
       
       // Format documents as context
-      context = relevantDocs.map(doc => `Document Title: ${doc.title}\nContent: ${doc.content}`).join('\n\n');
+      context = relevantDocs.map(doc => 
+        `SOURCE: ${doc.title} (${doc.id})
+         CONTENT: ${doc.content}
+         RELEVANCE: ${doc.score}
+        `).join('\n\n');
     }
     
     // Create a prompt with the context
     const systemPrompt = `You are a helpful AI assistant. Use the following context to answer the question. Please answer in elaborative manner and always use bullets and points when answering questions.
-If the answer is not in the context, just say "I don't have enough information to answer this question" and suggest what other information would be helpful.`;
+    If the answer is not in the context, just say "I don't have enough information to answer this question" and suggest what other information would be helpful.`;
 
     const userPrompt = `Context:
 ${context}
@@ -198,6 +212,7 @@ Question: ${query}`;
     // Generate the streaming response using ollama
     const response = await ollama.chat({
       model: 'gemma3:1b',
+      temperature: 0.5, 
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }

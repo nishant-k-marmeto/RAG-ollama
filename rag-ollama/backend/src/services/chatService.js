@@ -82,7 +82,8 @@ async function chatWithContext(conversationId, userMessage, useChainOfThought = 
     console.log(`Chain of thought: ${useChainOfThought}`);
     console.log(`Ollama config: ${JSON.stringify({ 
       host: process.env.OLLAMA_HOST || 'default (localhost:11434)',
-      model: 'llama3.2'
+      model: 'llama3.2',
+      temperature: 0.5,
     })}`);
     
     // Get the conversation
@@ -126,9 +127,12 @@ async function chatWithContext(conversationId, userMessage, useChainOfThought = 
     }
     
     // Create system message with instructions
-    let systemPrompt = `You are a helpful AI assistant with access to a knowledge base. 
-Use the following context information to answer the question. Please answer in an elaborative way and always use bullets and points when appropriate.
-If the answer is not in the context information, just say "I don't have enough information to answer this question" and suggest what other information would be helpful.`;
+    let systemPrompt = `You are a knowledgeable assistant with access to a specialized database.
+      When answering questions:
+      1. First analyze the context carefully
+      2. Cite specific documents when possible
+      3. Format responses with bullet points for readability
+      4. If uncertain, acknowledge limitations`;
     
     // Add chain-of-thought instructions if enabled
     if (useChainOfThought) {
@@ -171,6 +175,7 @@ After you've worked through your reasoning, provide a clear, concise answer.`;
       console.log(`Host: ${JSON.stringify(ollama)}`);
       const response = await ollama.chat({
         model: 'gemma3:1b',
+        temperature: 0.5,
         messages: messages
       });
       
