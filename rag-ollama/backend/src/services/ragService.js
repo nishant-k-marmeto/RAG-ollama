@@ -79,7 +79,7 @@ const generateResponse = async (query, documents) => {
       
       if (relevantDocs.length === 0) {
         const response = await ollama.chat({
-          model: 'llama3.2',
+          model: 'gemma3:1b',
           messages: [{ role: 'user', content: query }],
         });
         
@@ -104,7 +104,7 @@ Question: ${query}`;
 
     // Generate the response using ollama
     const response = await ollama.chat({
-      model: 'llama3.2',
+      model: 'gemma3:1b',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -170,7 +170,7 @@ const streamGenerateResponse = async (query, documents, onChunk) => {
       
       if (relevantDocs.length === 0) {
         const response = await ollama.chat({
-          model: 'llama3.2',
+          model: 'gemma3:1b',
           messages: [{ role: 'user', content: query }],
           stream: true
         });
@@ -197,7 +197,7 @@ Question: ${query}`;
 
     // Generate the streaming response using ollama
     const response = await ollama.chat({
-      model: 'llama3.2',
+      model: 'gemma3:1b',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
