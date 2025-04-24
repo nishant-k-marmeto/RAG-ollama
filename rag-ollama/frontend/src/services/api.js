@@ -13,7 +13,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json'
   },
-  timeout: 3000 
+  timeout: 300000 
 });
 
 // Log the created instance
