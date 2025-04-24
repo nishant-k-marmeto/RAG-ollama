@@ -170,7 +170,7 @@ After you've worked through your reasoning, provide a clear, concise answer.`;
       console.log('Initializing Ollama client...');
       console.log(`Host: ${JSON.stringify(ollama)}`);
       const response = await ollama.chat({
-        model: 'llama3.2',
+        model: 'gemma3:1b',
         messages: messages
       });
       
