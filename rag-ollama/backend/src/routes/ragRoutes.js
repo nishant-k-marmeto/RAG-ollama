@@ -17,6 +17,9 @@ router.post('/sync-utils-data', ragController.syncUtilsDataFiles);
 router.post('/import-employee-data', ragController.importEmployeeData);
 router.delete('/documents', ragController.deleteAllDocuments);
 
+// ChromaDB status check
+router.get('/chroma-status', ragController.checkChromaStatus);
+
 // Chat routes
 router.post('/chat', chatController.processChatMessage);
 router.get('/chat/:conversationId/history', chatController.getChatHistory);

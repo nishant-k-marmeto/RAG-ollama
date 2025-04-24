@@ -256,18 +256,29 @@ const DocumentsPage = () => {
     setChromaStatus(null);
     
     try {
-      const response = await axios.get('http://localhost:5000/api/rag/test-chroma');
-      setChromaStatus({
-        success: true,
-        message: response.data.message,
-        details: `Collection: ${response.data.collection}, Documents: ${response.data.documentCount}`
-      });
+      // Use our custom backend endpoint to check ChromaDB status
+      const response = await axios.get('http://localhost:5000/api/rag/chroma-status');
+      const data = response.data;
+      
+      if (data.status === 'connected') {
+        setChromaStatus({
+          success: true,
+          message: data.message,
+          details: `API Version: ${data.apiVersion || 'Unknown'}, Collections: ${data.collections}, Collection "${data.collection.name}": ${data.collection.exists ? 'Exists' : 'Not found'}, Documents: ${data.collection.documents}`
+        });
+      } else {
+        setChromaStatus({
+          success: false,
+          message: data.message,
+          details: data.error || 'Unknown error'
+        });
+      }
     } catch (err) {
       console.error('ChromaDB test failed:', err);
       setChromaStatus({
         success: false,
         message: 'ChromaDB connection failed',
-        details: err.response?.data?.details || err.message
+        details: err.response?.data?.error || err.message
       });
     } finally {
       setChromaLoading(false);
@@ -368,7 +379,7 @@ const DocumentsPage = () => {
       </div>
       
       {/* File upload section */}
-      <div style={{ marginBottom: '2rem', padding: '1.5rem',  borderRadius: '8px' }}>
+      {/* <div style={{ marginBottom: '2rem', padding: '1.5rem',  borderRadius: '8px' }}>
         <h2>Upload Files (PDF, CSV)</h2>
         <p>Enter the directory path containing your documents on the server.</p>
         
@@ -406,7 +417,7 @@ const DocumentsPage = () => {
             {uploadLoading ? 'Uploading...' : 'Upload Documents'}
           </button>
         </form>
-      </div>
+      </div> */}
       
       {/* Sync utils-data directory */}
       <div style={{ marginBottom: '2rem', padding: '1.5rem', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
@@ -511,7 +522,7 @@ const DocumentsPage = () => {
       </div>
       
       {/* File upload for client-side file upload */}
-      <div className="file-upload">
+      {/* <div className="file-upload">
         <label htmlFor="file-input">Select Files:</label>
         <input 
           type="file" 
@@ -523,10 +534,10 @@ const DocumentsPage = () => {
         <button onClick={handleFileUploadClient} disabled={!selectedFiles.length}>
           Upload Files
         </button>
-      </div>
+      </div> */}
       
       {/* Employee data import section */}
-      <div style={{ marginBottom: '2rem', padding: '1.5rem', borderRadius: '8px', border: '1px dashed #ccc' }}>
+      {/* <div style={{ marginBottom: '2rem', padding: '1.5rem', borderRadius: '8px', border: '1px dashed #ccc' }}>
         <h2>Import Employee Attendance Data</h2>
         <p>Import the employee attendance data from utils-data/Employee present_absent status.txt</p>
         
@@ -549,10 +560,10 @@ const DocumentsPage = () => {
         >
           {employeeImportLoading ? 'Importing...' : 'Import Employee Data'}
         </button>
-      </div>
+      </div> */}
       
       {/* CSV Import Button */}
-      <div style={{ marginBottom: '2rem', padding: '1.5rem', borderRadius: '8px', border: '1px dashed #ccc' }}>
+      {/* <div style={{ marginBottom: '2rem', padding: '1.5rem', borderRadius: '8px', border: '1px dashed #ccc' }}>
         <h2>Import Employee CSV Data</h2>
         <p>Import the employee data from utils-data/Employee-present_absent-status.csv</p>
         
@@ -575,7 +586,7 @@ const DocumentsPage = () => {
         >
           {csvImportLoading ? 'Importing CSV...' : 'Import CSV Data'}
         </button>
-      </div>
+      </div> */}
       
       {/* ChromaDB Test Section */}
       <div style={{ marginBottom: '2rem', padding: '1.5rem', borderRadius: '8px', border: '1px solid #ccc' }}>
@@ -611,7 +622,7 @@ const DocumentsPage = () => {
       </div>
       
       {/* Import CSV to ChromaDB Button */}
-      <div style={{ marginBottom: '2rem', padding: '1.5rem', borderRadius: '8px', border: '1px solid #ccc' }}>
+      {/* <div style={{ marginBottom: '2rem', padding: '1.5rem', borderRadius: '8px', border: '1px solid #ccc' }}>
         <h2>Import CSV Data to ChromaDB</h2>
         <p>Import the employee data from utils-data/Employee-present_absent-status.csv directly to ChromaDB</p>
         
@@ -641,7 +652,7 @@ const DocumentsPage = () => {
         >
           {chromaImportLoading ? 'Importing...' : 'Import CSV Data to ChromaDB'}
         </button>
-      </div>
+      </div> */}
       
       {/* Document list */}
       <div>

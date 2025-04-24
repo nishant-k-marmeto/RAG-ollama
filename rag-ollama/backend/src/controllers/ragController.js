@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import csv from 'csv-parser';
+import axios from 'axios';
 
 // Collection name for ChromaDB
 const COLLECTION_NAME = 'rag_documents';
@@ -548,5 +549,109 @@ export const uploadFileContent = async (req, res) => {
   } catch (error) {
     console.error('Error uploading file content:', error);
     return res.status(500).json({ error: 'Failed to upload file content: ' + error.message });
+  }
+};
+
+/**
+ * Check ChromaDB status and return information about collections
+ */
+export const checkChromaStatus = async (req, res) => {
+  try {
+    // ChromaDB typically runs on port 8000
+    const chromaUrl = process.env.CHROMA_URL || 'http://localhost:8000';
+    
+    try {
+      // Try different API versions for heartbeat
+      let heartbeatResponse;
+      let apiVersion;
+      
+      // First try API v2 (what the rest of the codebase uses)
+      try {
+        heartbeatResponse = await axios.get(`${chromaUrl}/api/v2/heartbeat`);
+        apiVersion = 'v2';
+      } catch (v2Error) {
+        console.log('ChromaDB v2 API not available, trying other versions...');
+        
+        // Try API v1
+        try {
+          heartbeatResponse = await axios.get(`${chromaUrl}/api/v1/heartbeat`);
+          apiVersion = 'v1';
+        } catch (v1Error) {
+          // Try API without version prefix (newer versions)
+          try {
+            heartbeatResponse = await axios.get(`${chromaUrl}/heartbeat`);
+            apiVersion = 'latest';
+          } catch (noVersionError) {
+            // Try legacy endpoint
+            try {
+              heartbeatResponse = await axios.get(`${chromaUrl}/api/heartbeat`);
+              apiVersion = 'legacy';
+            } catch (legacyError) {
+              throw new Error('No valid ChromaDB API endpoint found');
+            }
+          }
+        }
+      }
+      
+      console.log(`Connected to ChromaDB using API ${apiVersion}`);
+      
+      // Get collections information based on API version
+      let collections = [];
+      try {
+        let collectionsResponse;
+        if (apiVersion === 'v2') {
+          collectionsResponse = await axios.get(`${chromaUrl}/api/v2/collections`);
+        } else if (apiVersion === 'v1') {
+          collectionsResponse = await axios.get(`${chromaUrl}/api/v1/collections`);
+        } else if (apiVersion === 'latest') {
+          collectionsResponse = await axios.get(`${chromaUrl}/collections`);
+        } else {
+          collectionsResponse = await axios.get(`${chromaUrl}/api/collections`);
+        }
+        
+        collections = collectionsResponse.data || [];
+      } catch (collectionsError) {
+        console.error('Error getting collections:', collectionsError);
+      }
+      
+      // Check our collection by using chromadb.js functions directly
+      let collectionInfo = { exists: false, count: 0 };
+      try {
+        const collection = await getOrCreateCollection(COLLECTION_NAME);
+        collectionInfo.exists = true;
+        
+        // Get document count if possible
+        try {
+          const count = await collection.count();
+          collectionInfo.count = count;
+        } catch (countErr) {
+          console.error('Error getting document count:', countErr);
+        }
+      } catch (collectionErr) {
+        console.error('Error checking collection:', collectionErr);
+      }
+      
+      return res.status(200).json({
+        status: 'connected',
+        message: 'ChromaDB is running',
+        apiVersion,
+        collections: Array.isArray(collections) ? collections.length : 'Unknown',
+        collection: {
+          name: COLLECTION_NAME,
+          exists: collectionInfo.exists,
+          documents: collectionInfo.count
+        }
+      });
+    } catch (error) {
+      console.error('ChromaDB connection error:', error);
+      return res.status(503).json({
+        status: 'disconnected',
+        message: 'ChromaDB connection failed',
+        error: error.message
+      });
+    }
+  } catch (error) {
+    console.error('Error checking ChromaDB status:', error);
+    return res.status(500).json({ error: 'Failed to check ChromaDB status: ' + error.message });
   }
 }; 
