@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
+import api from '../services/api';
 
 const ChatPage = () => {
   const [messages, setMessages] = useState([]);
@@ -23,9 +23,9 @@ const ChatPage = () => {
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        const response = await axios.get(`https://ai-tool.marmeto.com/api/rag/chat/${conversationId}/history`);
-        if (response.data.messages && response.data.messages.length > 0) {
-          setMessages(response.data.messages);
+        const response = await api.getChatHistory(conversationId);
+        if (response.conversation && response.conversation.length > 0) {
+          setMessages(response.conversation);
         } else {
           // Add a welcome message if conversation is empty
           setMessages([{
@@ -71,30 +71,54 @@ const ChatPage = () => {
     setLoading(true);
     setError(null);
     
+    // Add loading indicator message
+    setMessages(prev => [...prev, {
+      role: 'system',
+      content: 'Processing your request...',
+      isLoading: true,
+      timestamp: new Date().toISOString()
+    }]);
+    
     try {
-      const response = await axios.post('https://ai-tool.marmeto.com/api/rag/chat', {
-        message: input,
-        conversationId,
-        useChainOfThought
-      });
+      console.log('Sending message to API:', input);
+      // The API expects message first, then conversationId
+      const response = await api.sendChatMessage(input, conversationId, useChainOfThought);
+      console.log('Received API response:', response);
+      
+      // Remove the loading message
+      setMessages(prev => prev.filter(msg => !msg.isLoading));
       
       // Add assistant response to messages
       const assistantMessage = {
         role: 'assistant',
-        content: response.data.answer,
+        content: response.answer,
         timestamp: new Date().toISOString(),
-        documents: response.data.documents
+        documents: response.documents
       };
       
       setMessages(prev => [...prev, assistantMessage]);
     } catch (err) {
       console.error('Error sending message:', err);
-      setError('Failed to get response. Please try again.');
+      
+      // Remove the loading message
+      setMessages(prev => prev.filter(msg => !msg.isLoading));
+      
+      let errorMessage = 'Failed to get response. Please try again.';
+      
+      if (err.message && err.message.includes('timeout')) {
+        errorMessage = 'The request timed out. The server might be busy or experiencing issues.';
+      } else if (err.response) {
+        errorMessage = `Server error: ${err.response.status}. ${err.response.data?.error || ''}`;
+      } else if (err.request) {
+        errorMessage = 'No response received from server. Please check your connection.';
+      }
+      
+      setError(errorMessage);
       
       // Add error message to chat
       setMessages(prev => [...prev, {
         role: 'system',
-        content: 'Sorry, there was an error processing your request. Please try again.',
+        content: errorMessage,
         error: true,
         timestamp: new Date().toISOString()
       }]);
@@ -106,7 +130,7 @@ const ChatPage = () => {
   // Clear conversation history
   const handleClearConversation = async () => {
     try {
-      await axios.delete(`https://ai-tool.marmeto.com/api/rag/chat/${conversationId}`);
+      await api.clearConversation(conversationId);
       
       // Start a new conversation
       const newConversationId = uuidv4();
@@ -196,13 +220,20 @@ const ChatPage = () => {
         {messages.map((message, index) => (
           <div 
             key={index} 
-            className={`message ${message.role} ${message.error ? 'error' : ''}`}
+            className={`message ${message.role} ${message.error ? 'error' : ''} ${message.isLoading ? 'loading' : ''}`}
           >
             <div className="message-content">
-              {message.role === 'assistant' 
-                ? formatMessageContent(message.content)
-                : <p>{message.content}</p>
-              }
+              {message.isLoading ? (
+                <div className="typing-indicator">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              ) : message.role === 'assistant' ? (
+                formatMessageContent(message.content)
+              ) : (
+                <p>{message.content}</p>
+              )}
               
               {message.documents && message.documents.length > 0 && (
                 <div className="message-documents">
@@ -217,7 +248,7 @@ const ChatPage = () => {
             </div>
           </div>
         ))}
-        {loading && (
+        {loading && !messages.some(m => m.isLoading) && (
           <div className="message assistant loading">
             <div className="typing-indicator">
               <span></span>

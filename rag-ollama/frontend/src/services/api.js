@@ -1,98 +1,165 @@
 import axios from 'axios';
 
-const api = {
-  // Query the RAG system
-  async queryRag(query) {
-    const response = await axios.post('/api/rag/query', { query });
-    return response.data;
-  },
+// Set base URL for all API calls
+const API_BASE_URL = 'https://ai-tool.marmeto.com/api';
 
-  // Query the RAG system with streaming response
-  streamQueryRag(query, onChunk, onDocuments, onError) {
-    const eventSource = new EventSource(`/api/rag/query/stream?query=${encodeURIComponent(query)}`);
-    
-    eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      
-      if (data.error) {
-        onError(data.error);
-        eventSource.close();
-      } else if (data.done) {
-        onDocuments(data.documents || []);
-        eventSource.close();
-      } else if (data.chunk) {
-        onChunk(data.chunk);
-      }
-    };
-    
-    eventSource.onerror = (error) => {
-      console.error('EventSource error:', error);
-      onError('Connection error. Please try again.');
-      eventSource.close();
-    };
-    
-    return () => {
-      eventSource.close();
-    };
+// Create axios instance with base config
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json'
   },
-  
-  // Add a document to the knowledge base
-  async addDocument(title, content) {
-    const response = await axios.post('/api/rag/add-document', { title, content });
-    return response.data;
+  timeout: 30000 // 30 second timeout
+});
+
+// Add request interceptor for debugging
+api.interceptors.request.use(
+  config => {
+    console.log(`API Request: ${config.method.toUpperCase()} ${config.url}`, config.data);
+    return config;
   },
-  
-  // Upload files to the knowledge base
-  async uploadFiles(directory) {
-    const response = await axios.post('/api/rag/upload-files', { directory });
-    return response.data;
+  error => {
+    console.error('API Request Error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for debugging
+api.interceptors.response.use(
+  response => {
+    console.log(`API Response: ${response.status} ${response.config.url}`);
+    return response;
   },
+  error => {
+    console.error('API Response Error:', error.message);
+    if (error.response) {
+      console.error('Error Status:', error.response.status);
+      console.error('Error Data:', error.response.data);
+    } else if (error.request) {
+      console.error('No response received:', error.request);
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Document management API functions
+const getDocuments = async () => {
+  const response = await api.get('/rag/documents');
+  return response.data;
+};
+
+const addDocument = async (title, content) => {
+  const response = await api.post('/rag/add-document', { title, content });
+  return response.data;
+};
+
+const uploadFiles = async (directory) => {
+  const response = await api.post('/rag/upload-files', { directory });
+  return response.data;
+};
+
+const uploadFilesClient = async (files) => {
+  const formData = new FormData();
+  for (let i = 0; i < files.length; i++) {
+    formData.append('files', files[i]);
+  }
   
-  // Import employee attendance data
-  async importEmployeeData() {
-    const response = await axios.post('/api/rag/import-employee-data');
-    return response.data;
-  },
-  
-  // Sync files from utils-data directory
-  async syncUtilsDataFiles() {
-    const response = await axios.post('/api/rag/sync-utils-data');
-    return response.data;
-  },
-  
-  // Delete all documents from the knowledge base
-  async deleteAllDocuments() {
-    const response = await axios.delete('/api/rag/documents');
-    return response.data;
-  },
-  
-  // Get all documents
-  async getDocuments() {
-    const response = await axios.get('/api/rag/documents');
-    return response.data;
-  },
-  
-  // Chat with the model
-  async sendChatMessage(message, conversationId, useChainOfThought = false) {
-    const response = await axios.post('/api/rag/chat', {
+  const response = await api.post('/rag/upload-files-client', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+  return response.data;
+};
+
+const deleteAllDocuments = async () => {
+  const response = await api.delete('/rag/documents');
+  return response.data;
+};
+
+const importEmployeeData = async () => {
+  const response = await api.post('/rag/import-employee-data');
+  return response.data;
+};
+
+const syncUtilsDataFiles = async () => {
+  const response = await api.post('/rag/sync-utils-data');
+  return response.data;
+};
+
+// Query functions
+const queryWithContext = async (query) => {
+  const response = await api.post('/rag/query', { query });
+  return response.data;
+};
+
+// Chat functions
+const sendChatMessage = async (message, conversationId, useChainOfThought = false) => {
+  try {
+    console.log('Sending chat message with params:', { message, conversationId, useChainOfThought });
+    const response = await api.post('/rag/chat', { 
       message,
       conversationId,
       useChainOfThought
     });
+    console.log('Chat response received:', response.data);
     return response.data;
-  },
-  
-  // Get chat history for a conversation
-  async getChatHistory(conversationId) {
-    const response = await axios.get(`/api/rag/chat/${conversationId}/history`);
-    return response.data;
-  },
-  
-  // Clear a conversation
-  async clearChatHistory(conversationId) {
-    const response = await axios.delete(`/api/rag/chat/${conversationId}`);
-    return response.data;
+  } catch (error) {
+    console.error('Chat API error:', error.message);
+    if (error.response) {
+      console.error('Response status:', error.response.status);
+      console.error('Response data:', error.response.data);
+    } else if (error.request) {
+      console.error('No response received - request details:', 
+        error.request._currentUrl || error.request.responseURL || 'Unknown URL');
+    }
+    throw error;
   }
 };
 
-export default api; 
+const getChatHistory = async (conversationId) => {
+  const response = await api.get(`/rag/chat/${conversationId}/history`);
+  return response.data;
+};
+
+const getConversations = async () => {
+  const response = await api.get('/rag/chat/conversations');
+  return response.data;
+};
+
+const clearConversation = async (conversationId) => {
+  const response = await api.delete(`/rag/chat/${conversationId}`);
+  return response.data;
+};
+
+const clearAllData = async () => {
+  const response = await api.delete('/rag/clear-all-data');
+  return response.data;
+};
+
+// System status
+const getChromaStatus = async () => {
+  const response = await api.get('/rag/chroma-status');
+  return response.data;
+};
+
+export default {
+  getDocuments,
+  addDocument,
+  uploadFiles,
+  uploadFilesClient,
+  deleteAllDocuments,
+  importEmployeeData,
+  syncUtilsDataFiles,
+  queryWithContext,
+  sendChatMessage,
+  getChatHistory,
+  getConversations,
+  clearConversation,
+  clearAllData,
+  getChromaStatus,
+  get: api.get,
+  post: api.post,
+  put: api.put,
+  delete: api.delete
+}; 

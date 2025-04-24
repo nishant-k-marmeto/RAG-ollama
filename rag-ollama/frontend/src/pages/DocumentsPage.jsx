@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import api from '../services/api';
 
 const DocumentsPage = () => {
@@ -235,7 +234,7 @@ const DocumentsPage = () => {
     setChromaImportError(null);
     
     try {
-      const response = await axios.post('https://ai-tool.marmeto.com/api/rag/import-csv-to-chroma');
+      const response = await api.post('/rag/import-csv-to-chroma');
       
       setChromaImportSuccess(`Successfully imported CSV to ChromaDB collection "${response.data.collection}" with ID: ${response.data.documentId}`);
       
@@ -257,8 +256,7 @@ const DocumentsPage = () => {
     
     try {
       // Use our custom backend endpoint to check ChromaDB status
-      const response = await axios.get('https://ai-tool.marmeto.com/api/rag/chroma-status');
-      const data = response.data;
+      const data = await api.getChromaStatus();
       
       if (data.status === 'connected') {
         setChromaStatus({
@@ -292,7 +290,7 @@ const DocumentsPage = () => {
     setCsvImportError(null);
     
     try {
-      const response = await axios.post('https://ai-tool.marmeto.com/api/rag/add-document', {
+      const response = await api.post('/rag/add-document', {
         title: 'Employee Attendance CSV Data',
         content: await fetchCSVContent()
       });
@@ -314,7 +312,7 @@ const DocumentsPage = () => {
   const fetchCSVContent = async () => {
     try {
       // Read the CSV file on the backend
-      const response = await axios.get('https://ai-tool.marmeto.com/api/rag/utils-data-content', {
+      const response = await api.get('/rag/utils-data-content', {
         params: { filename: 'Employee-present_absent-status.csv' }
       });
       return response.data.content;
