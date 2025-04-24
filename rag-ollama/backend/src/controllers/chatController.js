@@ -66,14 +66,28 @@ export const createChatMessage = async (req, res) => {
  */
 export const processChatMessage = async (req, res) => {
   try {
+    console.log('==== CHAT MESSAGE PROCESSING START ====');
+    console.log('Request body:', req.body);
+    console.log('Request headers:', req.headers);
+    console.log('Request URL:', req.protocol + '://' + req.get('host') + req.originalUrl);
+    
     const { message, conversationId = uuidv4(), useChainOfThought = false } = req.body;
     
     if (!message) {
+      console.log('Error: Message is required');
       return res.status(400).json({ error: 'Message is required' });
     }
 
+    console.log(`Processing chat for conversation: ${conversationId}`);
+    console.log(`Message content: ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`);
+    console.log(`Chain of thought enabled: ${useChainOfThought}`);
+
     // Get AI response using the chat service
+    console.log('Calling chat service...');
+    const startTime = Date.now();
     const response = await chatWithContext(conversationId, message, useChainOfThought);
+    const endTime = Date.now();
+    console.log(`Chat service response received in ${endTime - startTime}ms`);
     
     // Save both the user message and AI response to the file system
     const conversationPath = path.join(CONVERSATIONS_DIR, `${conversationId}.json`);
@@ -107,6 +121,9 @@ export const processChatMessage = async (req, res) => {
     // Save conversation to file
     fs.writeFileSync(conversationPath, JSON.stringify(conversation, null, 2));
     
+    console.log('Chat processing complete - sending response');
+    console.log('==== CHAT MESSAGE PROCESSING END ====');
+    
     return res.status(200).json({
       success: true,
       answer: response.answer,
@@ -115,7 +132,9 @@ export const processChatMessage = async (req, res) => {
       messageId: aiMessage.id
     });
   } catch (error) {
+    console.error('==== CHAT MESSAGE PROCESSING ERROR ====');
     console.error('Error processing chat message:', error);
+    console.error('Stack trace:', error.stack);
     return res.status(500).json({ error: 'Failed to process chat message: ' + error.message });
   }
 };
