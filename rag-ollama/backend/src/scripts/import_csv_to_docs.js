@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 
 // Path to the CSV file
 const csvFilePath = path.join(__dirname, '../../utils-data/Employee-present_absent-status.csv');
-const API_URL = 'http://localhost:5000/api/rag/add-document';
+const API_URL = 'https://ai-tool.marmeto.com/api/rag/add-document';
 
 async function importCSVToDocuments() {
   try {

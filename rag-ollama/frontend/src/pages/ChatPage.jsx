@@ -23,7 +23,7 @@ const ChatPage = () => {
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        const response = await axios.get(`http://localhost:5000/api/rag/chat/${conversationId}/history`);
+        const response = await axios.get(`https://ai-tool.marmeto.com/api/rag/chat/${conversationId}/history`);
         if (response.data.messages && response.data.messages.length > 0) {
           setMessages(response.data.messages);
         } else {
@@ -72,7 +72,7 @@ const ChatPage = () => {
     setError(null);
     
     try {
-      const response = await axios.post('http://localhost:5000/api/rag/chat', {
+      const response = await axios.post('https://ai-tool.marmeto.com/api/rag/chat', {
         message: input,
         conversationId,
         useChainOfThought
@@ -106,7 +106,7 @@ const ChatPage = () => {
   // Clear conversation history
   const handleClearConversation = async () => {
     try {
-      await axios.delete(`http://localhost:5000/api/rag/chat/${conversationId}`);
+      await axios.delete(`https://ai-tool.marmeto.com/api/rag/chat/${conversationId}`);
       
       // Start a new conversation
       const newConversationId = uuidv4();

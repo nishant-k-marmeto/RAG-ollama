@@ -235,7 +235,7 @@ const DocumentsPage = () => {
     setChromaImportError(null);
     
     try {
-      const response = await axios.post('http://localhost:5000/api/rag/import-csv-to-chroma');
+      const response = await axios.post('https://ai-tool.marmeto.com/api/rag/import-csv-to-chroma');
       
       setChromaImportSuccess(`Successfully imported CSV to ChromaDB collection "${response.data.collection}" with ID: ${response.data.documentId}`);
       
