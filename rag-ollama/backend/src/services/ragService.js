@@ -1,8 +1,126 @@
 import { Ollama } from 'ollama';
 import { getOrCreateCollection, queryCollection } from '../utils/chromadb.js';
 
-// Initialize Ollama client
-const ollama = new Ollama();
+// Global Ollama client reference
+let ollamaClient = null;
+
+// Model warmup configuration
+const MODELS_TO_WARMUP = ['llama3.2']; // Add more models as needed
+const WARMUP_INTERVAL = 15 * 60 * 1000; // 15 minutes
+const WARMUP_SCENARIOS = [
+  { role: 'user', content: 'Hello, how are you?' },
+  { role: 'user', content: 'What is machine learning?' },
+  { role: 'user', content: 'Summarize this document for me' }
+];
+
+/**
+ * Get or create an Ollama client with connection pooling
+ * @returns {Ollama} The Ollama client instance
+ */
+function getOllamaClient() {
+  if (!ollamaClient) {
+    console.log('Creating new Ollama client instance with keep-alive settings');
+    ollamaClient = new Ollama({
+      host: process.env.OLLAMA_HOST || 'http://localhost:11434',
+      keepAlive: true,
+      keepAliveMsecs: 300000, // 5 minutes
+      headers: { 'Connection': 'keep-alive' }
+    });
+  }
+  return ollamaClient;
+}
+
+/**
+ * Ensures Ollama connection is working and reconnects if needed
+ * @returns {boolean} Connection status
+ */
+async function ensureOllamaConnection() {
+  try {
+    // Simple health check by listing models
+    await getOllamaClient().list();
+    return true;
+  } catch (error) {
+    console.log("Ollama connection failed, reconnecting...", error.message);
+    // Reset client to force new connection
+    ollamaClient = null;
+    // Try to create new connection
+    getOllamaClient();
+    return false;
+  }
+}
+
+/**
+ * Warm up a specific model with various prompts
+ * @param {string} modelName - Name of the model to warm up
+ * @returns {Promise<boolean>} - Success status
+ */
+async function warmupModel(modelName) {
+  console.log(`Warming up model: ${modelName}...`);
+  try {
+    // Pick a random scenario from the warmup scenarios
+    const scenario = WARMUP_SCENARIOS[Math.floor(Math.random() * WARMUP_SCENARIOS.length)];
+    
+    // Send the warmup prompt to the model
+    const startTime = Date.now();
+    await getOllamaClient().chat({
+      model: modelName,
+      messages: [scenario]
+    });
+    const duration = Date.now() - startTime;
+    
+    console.log(`✅ Model ${modelName} warmed up successfully in ${duration}ms`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Failed to warm up model ${modelName}:`, error.message);
+    return false;
+  }
+}
+
+/**
+ * Warm up all configured models
+ * @returns {Promise<object>} - Results of warmup operations
+ */
+async function warmupAllModels() {
+  console.log(`Starting warmup for ${MODELS_TO_WARMUP.length} models...`);
+  const results = {};
+  
+  // Make sure the connection is active
+  await ensureOllamaConnection();
+  
+  // Warm up each model
+  for (const model of MODELS_TO_WARMUP) {
+    results[model] = await warmupModel(model);
+  }
+  
+  console.log('Model warmup completed with results:', results);
+  return results;
+}
+
+// Perform initial warmup on startup
+(async function initialWarmup() {
+  try {
+    console.log('Performing initial model warmup...');
+    await warmupAllModels();
+  } catch (error) {
+    console.error('Initial model warmup failed:', error);
+  }
+})();
+
+// Schedule periodic warmups to keep models loaded
+const warmupInterval = setInterval(async () => {
+  try {
+    console.log('Performing scheduled model warmup...');
+    await warmupAllModels();
+  } catch (error) {
+    console.error('Scheduled model warmup failed:', error);
+  }
+}, WARMUP_INTERVAL);
+
+// Handle process termination
+process.on('SIGTERM', () => {
+  clearInterval(warmupInterval);
+  console.log('Warmup interval cleared on process termination');
+});
 
 // Collection name for ChromaDB
 const COLLECTION_NAME = 'rag_documents';
@@ -43,6 +161,9 @@ const findRelevantDocuments = (query, documents) => {
  */
 const generateResponse = async (query, documents) => {
   try {
+    // Ensure Ollama connection is working
+    await ensureOllamaConnection();
+    
     // Try to get relevant documents from ChromaDB
     let relevantDocs = [];
     let useChroma = false;
@@ -77,7 +198,7 @@ const generateResponse = async (query, documents) => {
       relevantDocs = findRelevantDocuments(query, documents);
       
       if (relevantDocs.length === 0) {
-        const response = await ollama.chat({
+        const response = await getOllamaClient().chat({
           model: 'llama3.2',
           temperature: 0.5, 
           messages: [{ role: 'user', content: query }],
@@ -110,8 +231,8 @@ ${context}
 
 Question: ${query}`;
 
-    // Generate the response using ollama
-    const response = await ollama.chat({
+    // Generate the response using ollama with persistent connection
+    const response = await getOllamaClient().chat({
       model: 'llama3.2',
       temperature: 0.5,
       messages: [
@@ -144,6 +265,9 @@ Question: ${query}`;
  */
 const streamGenerateResponse = async (query, documents, onChunk) => {
   try {
+    // Ensure Ollama connection is working
+    await ensureOllamaConnection();
+    
     // Try to get relevant documents from ChromaDB
     let relevantDocs = [];
     let useChroma = false;
@@ -178,7 +302,7 @@ const streamGenerateResponse = async (query, documents, onChunk) => {
       relevantDocs = findRelevantDocuments(query, documents);
       
       if (relevantDocs.length === 0) {
-        const response = await ollama.chat({
+        const response = await getOllamaClient().chat({
           model: 'llama3.2',
           temperature: 0.5,
           messages: [{ role: 'user', content: query }],
@@ -209,8 +333,8 @@ ${context}
 
 Question: ${query}`;
 
-    // Generate the streaming response using ollama
-    const response = await ollama.chat({
+    // Generate the streaming response using persistent ollama connection
+    const response = await getOllamaClient().chat({
       model: 'llama3.2',
       temperature: 0.5, 
       messages: [
