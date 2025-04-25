@@ -420,7 +420,7 @@ async function streamQueryWithContext(userQuery, numResults = 3, onToken) {
         if (onToken) onToken({ done: true });
       },
       onStream: ({ message }) => {
-        if (onToken) onToken({ token: message.content, done: false });
+        if (onToken) onToken(message.content);
       }
     });
     

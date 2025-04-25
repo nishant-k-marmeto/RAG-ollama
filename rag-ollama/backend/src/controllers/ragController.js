@@ -52,7 +52,16 @@ export const streamQueryWithContext = async (req, res) => {
     
     // Generate and stream the response
     const docsInfo = await ragService.streamGenerateResponse(query, documents, (chunk) => {
-      res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+      if (typeof chunk === 'string') {
+        // Handle string chunks (from updated service)
+        res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+      } else if (chunk && chunk.done) {
+        // Handle completion notification
+        // This will be handled separately below
+      } else if (chunk) {
+        // Handle any other format
+        res.write(`data: ${JSON.stringify({ chunk: chunk.token || chunk })}\n\n`);
+      }
     });
     
     // Send the list of documents used at the end
