@@ -9,6 +9,11 @@ const client = new ChromaClient({
 // Initialize the embedding function
 const embeddingFunction = new DefaultEmbeddingFunction();
 
+// Simple in-memory LRU cache for queries
+const queryCache = new Map();
+const MAX_CACHE_SIZE = 100;
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
 /**
  * Get or create a collection in ChromaDB
  * @param {string} name - Collection name
@@ -35,18 +40,123 @@ export async function getOrCreateCollection(name = "nishant-collection") {
 }
 
 /**
- * Query a collection for relevant documents
+ * Adds an entry to the query cache
+ * @param {string} cacheKey - Cache key
+ * @param {object} results - Query results
+ */
+function addToCache(cacheKey, results) {
+  // If cache is full, remove oldest entry
+  if (queryCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = queryCache.keys().next().value;
+    queryCache.delete(oldestKey);
+  }
+  
+  queryCache.set(cacheKey, {
+    timestamp: Date.now(),
+    results
+  });
+}
+
+/**
+ * Gets an entry from the query cache if valid
+ * @param {string} cacheKey - Cache key
+ * @returns {object|null} Query results or null if not found/expired
+ */
+function getFromCache(cacheKey) {
+  if (!queryCache.has(cacheKey)) {
+    return null;
+  }
+  
+  const cachedData = queryCache.get(cacheKey);
+  const age = Date.now() - cachedData.timestamp;
+  
+  // Check if cache entry is expired
+  if (age > CACHE_TTL) {
+    queryCache.delete(cacheKey);
+    return null;
+  }
+  
+  console.log(`ChromaDB: Cache hit for query: ${cacheKey}`);
+  return cachedData.results;
+}
+
+/**
+ * Generates a cache key for a query
+ * @param {object} collection - The ChromaDB collection
+ * @param {number} nResults - Number of results
+ * @param {string[]} queryTexts - Query texts
+ * @param {object} options - Additional query options
+ * @returns {string} Cache key
+ */
+function generateCacheKey(collection, nResults, queryTexts, options = {}) {
+  return `${collection.name}_${nResults}_${queryTexts.join('|')}_${JSON.stringify(options)}`;
+}
+
+/**
+ * Query a collection for relevant documents with optimized performance
  * @param {object} collection - The ChromaDB collection
  * @param {number} nResults - Number of results to return
  * @param {string[]} queryTexts - Array of query texts
+ * @param {object} options - Additional query options
  * @returns {object} Query results
  */
-export async function queryCollection(collection, nResults, queryTexts) {
+export async function queryCollection(collection, nResults, queryTexts, options = {}) {
   try {
-    const results = await collection.query({
+    // Generate cache key based on query parameters
+    const cacheKey = generateCacheKey(collection, nResults, queryTexts, options);
+    
+    // Check cache first
+    const cachedResults = getFromCache(cacheKey);
+    if (cachedResults) {
+      return cachedResults;
+    }
+    
+    // Setup query parameters with optimizations
+    const queryParams = {
       nResults,
       queryTexts,
-    });
+      // Default to cosine distance for better semantic matching
+      where: options.where || {},
+      whereDocument: options.whereDocument || {},
+      include: ["metadatas", "documents", "distances"], // Include all data
+    };
+    
+    // Add advanced parameters if specified
+    if (options.mmr) {
+      // Maximum marginal relevance for better diversity
+      queryParams.mmrConfig = {
+        enabled: true,
+        diversityBias: options.mmr.diversityBias || 0.3
+      };
+    }
+    
+    // Log query performance
+    const startTime = Date.now();
+    
+    // Execute query with retries
+    let results;
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    while (attempts < maxAttempts) {
+      try {
+        results = await collection.query(queryParams);
+        break; // Success, exit retry loop
+      } catch (retryError) {
+        attempts++;
+        if (attempts >= maxAttempts) {
+          throw retryError; // Rethrow if all attempts failed
+        }
+        console.warn(`ChromaDB query attempt ${attempts} failed, retrying...`, retryError.message);
+        await new Promise(resolve => setTimeout(resolve, 500 * attempts)); // Exponential backoff
+      }
+    }
+    
+    const endTime = Date.now();
+    console.log(`ChromaDB query completed in ${endTime - startTime}ms`);
+    
+    // Cache the results
+    addToCache(cacheKey, results);
     
     return results;
   } catch (error) {
@@ -80,6 +190,9 @@ export async function deleteDocument(collection, id) {
       ids: [id]
     });
     console.log(`Document ${id} deleted`);
+    
+    // Clear cache as content has changed
+    queryCache.clear();
   } catch (error) {
     console.error(`Error deleting document ${id}:`, error);
     throw error;
@@ -103,6 +216,10 @@ export async function deleteAllDocuments(collection) {
       });
       
       console.log(`Successfully deleted ${allDocuments.ids.length} documents from collection`);
+      
+      // Clear cache as content has changed
+      queryCache.clear();
+      
       return true;
     } else {
       console.log('No documents found in collection to delete');

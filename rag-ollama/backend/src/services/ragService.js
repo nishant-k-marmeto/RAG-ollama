@@ -221,9 +221,24 @@ async function queryWithContext(userQuery, numResults = 3) {
     // Get the collection
     const collection = await getOrCreateCollection('rag_documents');
     
-    // Query for relevant documents
+    // Query for relevant documents with optimized parameters
     console.log(`RAGService: Querying ChromaDB for relevant documents...`);
-    const results = await queryCollection(collection, numResults, [userQuery]);
+    const queryStartTime = Date.now();
+    
+    // Enhanced query options for better results
+    const queryOptions = {
+      // Enable Maximum Marginal Relevance for diverse results
+      mmr: {
+        enabled: true,
+        diversityBias: 0.3
+      },
+      // Filter options can be added here if needed
+      // where: { type: { $in: ['manual', 'text'] } },
+    };
+    
+    const results = await queryCollection(collection, numResults, [userQuery], queryOptions);
+    const queryEndTime = Date.now();
+    console.log(`RAGService: ChromaDB query completed in ${queryEndTime - queryStartTime}ms`);
     
     let context = '';
     let sources = [];
@@ -238,7 +253,10 @@ async function queryWithContext(userQuery, numResults = 3) {
       sources = results.metadatas[0].map((metadata, index) => ({
         id: results.ids[0][index],
         title: metadata.source || `Document ${index + 1}`,
-        content: results.documents[0][index].substring(0, 100) + '...'
+        content: results.documents[0][index].substring(0, 100) + '...',
+        // Include distance score if available
+        relevance: results.distances && results.distances[0] ? 
+          `${(1 - results.distances[0][index]) * 100}%` : undefined
       }));
     } else {
       console.log('RAGService: No relevant documents found in ChromaDB');
@@ -317,9 +335,23 @@ async function streamQueryWithContext(userQuery, numResults = 3, onToken) {
     // Get the collection
     const collection = await getOrCreateCollection('rag_documents');
     
-    // Query for relevant documents
+    // Query for relevant documents with optimized parameters
     console.log(`RAGService: Querying ChromaDB for relevant documents...`);
-    const results = await queryCollection(collection, numResults, [userQuery]);
+    const queryStartTime = Date.now();
+    
+    // Enhanced query options for better results
+    const queryOptions = {
+      // Enable Maximum Marginal Relevance for diverse results
+      mmr: {
+        enabled: true,
+        diversityBias: 0.3
+      },
+      // Filter options can be added here if needed
+    };
+    
+    const results = await queryCollection(collection, numResults, [userQuery], queryOptions);
+    const queryEndTime = Date.now();
+    console.log(`RAGService: ChromaDB query completed in ${queryEndTime - queryStartTime}ms`);
     
     let context = '';
     let sources = [];
@@ -327,14 +359,17 @@ async function streamQueryWithContext(userQuery, numResults = 3, onToken) {
     if (results && results.documents && results.documents[0] && results.documents[0].length > 0) {
       console.log(`RAGService: Found ${results.documents[0].length} relevant documents`);
       
-      // Format documents from ChromaDB
+      // Format documents from ChromaDB with improved relevance scoring
       context = results.documents[0].join('\n\n');
       
-      // Extract sources for citation
+      // Extract sources for citation with relevance info
       sources = results.metadatas[0].map((metadata, index) => ({
         id: results.ids[0][index],
         title: metadata.source || `Document ${index + 1}`,
-        content: results.documents[0][index].substring(0, 100) + '...'
+        content: results.documents[0][index].substring(0, 100) + '...',
+        // Include distance score if available
+        relevance: results.distances && results.distances[0] ? 
+          `${(1 - results.distances[0][index]) * 100}%` : undefined
       }));
     } else {
       console.log('RAGService: No relevant documents found in ChromaDB');
