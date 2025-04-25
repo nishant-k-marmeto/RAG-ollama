@@ -1,4 +1,4 @@
-import { ChromaClient, DefaultEmbeddingFunction } from 'chromadb';
+import { ChromaClient, OllamaEmbeddingFunction } from 'chromadb';
 
 // Initialize ChromaDB client
 const client = new ChromaClient({
@@ -6,8 +6,11 @@ const client = new ChromaClient({
   apiPath: process.env.CHROMA_API_PATH || "/api/v2",
 });
 
-// Initialize the embedding function
-const embeddingFunction = new DefaultEmbeddingFunction();
+// Initialize the Ollama embedding function
+const embeddingFunction = new OllamaEmbeddingFunction({
+  url: process.env.OLLAMA_HOST || "http://localhost:11434",
+  model: "llama3.2:1b" // Using the same model as in ragService for consistency
+});
 
 // Simple in-memory LRU cache for queries
 const queryCache = new Map();
