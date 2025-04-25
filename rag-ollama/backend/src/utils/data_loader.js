@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import csv from 'csv-parser';
-import sentenceSplitter from 'sentence-splitter';  // Correct import for sentence-splitter
+import { split } from 'sentence-splitter';  // Correct import for sentence-splitter
 
 /**
  * Adds files from a directory to a ChromaDB collection
@@ -53,7 +53,7 @@ async function processAndAddText(filePath, collection) {
     const content = fs.readFileSync(filePath, 'utf8');
     const fileName = path.basename(filePath);
     
-    // Split content into semantically meaningful chunks
+    // Split content into semantically meaningful chunks using sentence-splitter
     const chunks = chunkTextBySentences(content);
     console.log(`Split ${fileName} into ${chunks.length} chunks based on sentences`);
     
@@ -138,17 +138,24 @@ async function processAndAddCsv(filePath, collection) {
  */
 export function chunkTextBySentences(text, maxChunkSize = 1000) {
   try {
-    // Split text into sentences using sentence-splitter
-    const sentenceNodes = sentenceSplitter(text);
+    // Split text into sentences using sentence-splitter library
+    const sentenceNodes = split(text);
     
-    // Extract raw sentences directly and avoid unnecessary array creation
-    const sentences = sentenceNodes.filter(node => node.type === 'Sentence').map(node => node.raw);
+    // Extract raw sentences from the nodes
+    const sentences = sentenceNodes
+      .filter(node => node.type === 'Sentence')
+      .map(node => node.raw);
+    
+    if (sentences.length === 0) {
+      return [text]; // Return original text if no sentences detected
+    }
     
     const chunks = [];
     let currentChunk = '';
     
-    sentences.forEach((sentence) => {
-      // If adding this sentence would exceed the chunk size and we already have content, start a new chunk
+    for (const sentence of sentences) {
+      // If adding this sentence would exceed the target size and we already have content,
+      // start a new chunk
       if (currentChunk.length + sentence.length > maxChunkSize && currentChunk.length > 0) {
         chunks.push(currentChunk.trim());
         currentChunk = '';
@@ -156,18 +163,19 @@ export function chunkTextBySentences(text, maxChunkSize = 1000) {
       
       // Add the sentence to the current chunk
       currentChunk += sentence + ' ';
-    });
+    }
     
-    // Push the last chunk if any content exists
-    if (currentChunk.trim()) {
+    // Add the final chunk if it has content
+    if (currentChunk.trim().length > 0) {
       chunks.push(currentChunk.trim());
     }
-
+    
     console.log(`Split text into ${chunks.length} semantically meaningful chunks`);
     return chunks;
   } catch (error) {
     console.error('Error chunking text by sentences:', error);
-    return chunkText(text, maxChunkSize); // Fallback to character-based chunking if sentence-splitter fails
+    // Fall back to character-based chunking if sentence splitting fails
+    return chunkText(text, maxChunkSize);
   }
 }
 
