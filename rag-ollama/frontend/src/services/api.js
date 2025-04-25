@@ -7,90 +7,19 @@ console.log('API service initializing...');
 const API_BASE_URL = 'https://ai-tool.marmeto.com/api';
 console.log('API_BASE_URL:', API_BASE_URL);
 
-// Create axios instance with base config
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  timeout: 300000 
-});
-
-// Log the created instance
-console.log('Axios instance created with baseURL:', api.defaults.baseURL);
-
-// Override axios to log the full request URL
-const originalRequest = axios.Axios.prototype.request;
-axios.Axios.prototype.request = function(...args) {
-  const config = args[0];
-  const fullUrl = config.baseURL + config.url;
-  console.log(`🔍 AXIOS FULL URL: ${config.method?.toUpperCase() || 'GET'} ${fullUrl}`);
-  return originalRequest.apply(this, args);
-};
-
-// Add request interceptor for debugging
-api.interceptors.request.use(
-  config => {
-    const fullUrl = config.baseURL + config.url;
-    console.log(`🚀 API Request: ${config.method.toUpperCase()} ${fullUrl} (${new Date().toISOString()})`);
-    console.log('Request headers:', config.headers);
-    console.log('Request data:', config.data);
-    
-    // Force baseURL to be correct (extra safety measure)
-    config.baseURL = API_BASE_URL;
-    
-    return config;
-  },
-  error => {
-    console.error('❌ API Request Error:', error);
-    return Promise.reject(error);
-  }
-);
-
-// Add response interceptor for debugging
-api.interceptors.response.use(
-  response => {
-    const fullUrl = response.config.baseURL + response.config.url;
-    console.log(`✅ API Response ${response.status}: ${fullUrl} (${new Date().toISOString()})`);
-    
-    // Only log first 500 characters of response to avoid console flooding
-    const responseData = JSON.stringify(response.data).substring(0, 500);
-    console.log(`Response data: ${responseData}${JSON.stringify(response.data).length > 500 ? '...(truncated)' : ''}`);
-    
-    return response;
-  },
-  error => {
-    console.error('❌ API Response Error:', error.message);
-    
-    if (error.response) {
-      console.error('Error Status:', error.response.status);
-      console.error('Error Data:', error.response.data);
-      console.error('Request URL:', error.config.url);
-      console.error('Full URL:', error.config.baseURL + error.config.url);
-    } else if (error.request) {
-      console.error('No response received for request:', error.request);
-      console.error('Request config:', error.config);
-      console.error('Full URL that failed:', error.config?.baseURL + error.config?.url);
-    }
-    
-    console.error('Error stack:', error.stack);
-    return Promise.reject(error);
-  }
-);
-
 // Document management API functions
 const getDocuments = async () => {
-  const response = await api.get('/rag/documents');
+  const response = await axios.get(`${API_BASE_URL}/rag/documents`);
   return response.data;
 };
 
 const addDocument = async (title, content) => {
-  const response = await api.post('/rag/add-document', { title, content });
+  const response = await axios.post(`${API_BASE_URL}/rag/add-document`, { title, content });
   return response.data;
 };
 
 const uploadFiles = async (directory) => {
-  const response = await api.post('/rag/upload-files', { directory });
+  const response = await axios.post(`${API_BASE_URL}/rag/upload-files`, { directory });
   return response.data;
 };
 
@@ -100,7 +29,7 @@ const uploadFilesClient = async (files) => {
     formData.append('files', files[i]);
   }
   
-  const response = await api.post('/rag/upload-files-client', formData, {
+  const response = await axios.post(`${API_BASE_URL}/rag/upload-files-client`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
@@ -109,19 +38,18 @@ const uploadFilesClient = async (files) => {
 };
 
 const deleteAllDocuments = async () => {
-  const response = await api.delete('/rag/documents');
+  const response = await axios.delete(`${API_BASE_URL}/rag/documents`);
   return response.data;
 };
 
-
 const syncUtilsDataFiles = async () => {
-  const response = await api.post('/rag/sync-utils-data');
+  const response = await axios.post(`${API_BASE_URL}/rag/sync-utils-data`);
   return response.data;
 };
 
 // Query functions
 const queryWithContext = async (query) => {
-  const response = await api.post('/rag/query', { query });
+  const response = await axios.post(`${API_BASE_URL}/rag/query`, { query });
   return response.data;
 };
 
@@ -187,7 +115,6 @@ const sendChatMessage = async (message, conversationId, useChainOfThought = fals
     console.log('- conversationId:', conversationId);
     console.log('- useChainOfThought:', useChainOfThought);
     console.log('- API_BASE_URL:', API_BASE_URL);
-    console.log('- api.defaults.baseURL:', api.defaults.baseURL);
     
     // Construct the URL manually for debugging
     const chatEndpoint = '/rag/chat';
@@ -240,28 +167,28 @@ const sendChatMessage = async (message, conversationId, useChainOfThought = fals
 };
 
 const getChatHistory = async (conversationId) => {
-  const response = await api.get(`/rag/chat/${conversationId}/history`);
+  const response = await axios.get(`${API_BASE_URL}/rag/chat/${conversationId}/history`);
   return response.data;
 };
 
 const getConversations = async () => {
-  const response = await api.get('/rag/chat/conversations');
+  const response = await axios.get(`${API_BASE_URL}/rag/chat/conversations`);
   return response.data;
 };
 
 const clearConversation = async (conversationId) => {
-  const response = await api.delete(`/rag/chat/${conversationId}`);
+  const response = await axios.delete(`${API_BASE_URL}/rag/chat/${conversationId}`);
   return response.data;
 };
 
 const clearAllData = async () => {
-  const response = await api.delete('/rag/clear-all-data');
+  const response = await axios.delete(`${API_BASE_URL}/rag/clear-all-data`);
   return response.data;
 };
 
 // System status
 const getChromaStatus = async () => {
-  const response = await api.get('/rag/chroma-status');
+  const response = await axios.get(`${API_BASE_URL}/rag/chroma-status`);
   return response.data;
 };
 
@@ -281,9 +208,8 @@ export default {
   clearConversation,
   clearAllData,
   getChromaStatus,
-  get: api.get,
-  post: api.post,
-  put: api.put,
-  delete: api.delete,
-  baseUrl: API_BASE_URL
+  get: (url) => axios.get(`${API_BASE_URL}${url}`),
+  post: (url, data) => axios.post(`${API_BASE_URL}${url}`, data),
+  put: (url, data) => axios.put(`${API_BASE_URL}${url}`, data),
+  delete: (url) => axios.delete(`${API_BASE_URL}${url}`)
 }; 
