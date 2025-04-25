@@ -219,7 +219,7 @@ async function queryWithContext(userQuery, numResults = 3) {
     await ensureOllamaConnection();
     
     // Get the collection
-    const collection = await getOrCreateCollection();
+    const collection = await getOrCreateCollection('rag_documents');
     
     // Query for relevant documents
     console.log(`RAGService: Querying ChromaDB for relevant documents...`);
@@ -315,7 +315,7 @@ async function streamQueryWithContext(userQuery, numResults = 3, onToken) {
     await ensureOllamaConnection();
     
     // Get the collection
-    const collection = await getOrCreateCollection();
+    const collection = await getOrCreateCollection('rag_documents');
     
     // Query for relevant documents
     console.log(`RAGService: Querying ChromaDB for relevant documents...`);
