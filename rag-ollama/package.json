@@ -15,7 +15,10 @@
     "stop:chroma": "docker stop $(docker ps -q --filter ancestor=chromadb/chroma)",
     "build": "cd frontend && npm run build",
     "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
-    "test:utils-data": "cd backend && node src/scripts/test-utils-data.js"
+    "test:utils-data": "cd backend && node src/scripts/test-utils-data.js",
+    "fix:chroma-dimensions": "cd backend && node src/scripts/fix-chroma-dimensions.js",
+    "fix:chroma-dimensions:384": "cd backend && node src/scripts/fix-chroma-dimensions.js 384",
+    "fix:chroma-dimensions:2048": "cd backend && node src/scripts/fix-chroma-dimensions.js 2048"
   },
   "keywords": [
     "rag",

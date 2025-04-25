@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import csv from 'csv-parser';
 import axios from 'axios';
+import { checkCollectionEmbeddingDimension } from '../utils/embeddingDebugger.js';
 
 // Collection name for ChromaDB
 const COLLECTION_NAME = 'rag_documents';
@@ -255,10 +256,22 @@ export const syncUtilsDataFiles = async (req, res) => {
     // Get the collection
     const collection = await getOrCreateCollection(COLLECTION_NAME);
     
+    // Check collection embedding dimension
+    const embeddingDimension = await checkCollectionEmbeddingDimension(COLLECTION_NAME);
+    if (embeddingDimension) {
+      console.log(`Collection uses embeddings with dimension: ${embeddingDimension}`);
+      // If the embedding dimension doesn't match what we're using in our code, let the user know
+      if (embeddingDimension !== 384) {
+        console.log(`⚠️ WARNING: Collection uses ${embeddingDimension}-dimensional embeddings, but our configuration uses 384-dimensional embeddings.`);
+        console.log(`Run 'npm run fix:chroma-dimensions:${embeddingDimension}' to fix this discrepancy.`);
+      }
+    }
+    
     // Get list of files
     const files = fs.readdirSync(utilsDataDir);
     const processedFiles = [];
     let totalChunks = 0;
+    let errors = [];
     
     // Process each file
     for (const file of files) {
@@ -305,20 +318,25 @@ export const syncUtilsDataFiles = async (req, res) => {
           }).join('\n');
           
           // Add to collection
-          console.log(`Adding CSV content to ChromaDB (${content.length} characters)`);
-          await collection.add({
-            ids: [fileId],
-            documents: [content],
-            metadatas: [{ 
-              source: fileName, 
-              type: 'csv',
-              created: new Date().toISOString(),
-              size: fileStats.size
-            }],
-          });
-          
-          processedFiles.push({ name: fileName, type: 'csv', chunks: 1 });
-          totalChunks++;
+          try {
+            console.log(`Adding CSV content to ChromaDB (${content.length} characters)`);
+            await collection.add({
+              ids: [fileId],
+              documents: [content],
+              metadatas: [{ 
+                source: fileName, 
+                type: 'csv',
+                created: new Date().toISOString(),
+                size: fileStats.size
+              }],
+            });
+            processedFiles.push({ name: fileName, type: 'csv', chunks: 1 });
+            totalChunks++;
+          } catch (error) {
+            console.error(`Failed to add ${fileName} to ChromaDB:`, error);
+            errors.push({ file: fileName, error: error.message });
+            // Continue with other files
+          }
         } else if (fileExt === '.txt') {
           // Process text files
           console.log(`Processing TXT file: ${fileName}`);
@@ -377,19 +395,32 @@ export const syncUtilsDataFiles = async (req, res) => {
                 metadatas: chunks.map(chunk => chunk.metadata)
               });
               console.log(`Successfully added ${chunks.length} chunks to ChromaDB`);
+              processedFiles.push({ name: fileName, type: 'text', chunks: chunks.length });
+              totalChunks += chunks.length;
             } catch (error) {
               console.error(`Failed to add ${fileName} chunks to ChromaDB:`, error);
-              // Error is caught but NOT returned to the client
+              errors.push({ file: fileName, error: error.message });
+              
+              // If this is a dimension mismatch error, provide more helpful information
+              if (error.message && error.message.includes('expecting embedding with dimension')) {
+                const match = error.message.match(/expecting embedding with dimension of (\d+), got (\d+)/);
+                if (match && match.length === 3) {
+                  const expectedDim = parseInt(match[1]);
+                  const actualDim = parseInt(match[2]);
+                  
+                  console.error(`\n⚠️ EMBEDDING DIMENSION MISMATCH: Collection expects ${expectedDim}, but got ${actualDim}`);
+                  console.error(`This typically happens when mixing different embedding models.`);
+                  console.error(`To fix this, run: npm run fix:chroma-dimensions:${expectedDim}`);
+                }
+              }
             }
           }
-          
-          processedFiles.push({ name: fileName, type: 'text', chunks: chunks.length });
-          totalChunks += chunks.length;
         } else {
           console.log(`Skipping unsupported file type: ${fileExt} for file ${fileName}`);
         }
       } catch (fileError) {
         console.error(`Error processing file ${file}:`, fileError);
+        errors.push({ file, error: fileError.message });
         // Continue processing other files
       }
     }
@@ -429,12 +460,35 @@ export const syncUtilsDataFiles = async (req, res) => {
       console.error('Error fetching embeddings:', embeddingError);
     }
     
-    return res.status(200).json({ 
+    const response = { 
       message: `Successfully synced ${processedFiles.length} files from utils-data directory`,
       files: processedFiles,
       totalChunks,
       directoryPath: utilsDataDir
-    });
+    };
+    
+    // Add errors to response if there were any
+    if (errors.length > 0) {
+      response.errors = errors;
+      response.errorCount = errors.length;
+      response.message += ` with ${errors.length} errors`;
+      
+      // Check for dimension mismatch errors and add fix instructions
+      const dimensionErrors = errors.filter(e => e.error && e.error.includes('expecting embedding with dimension'));
+      if (dimensionErrors.length > 0) {
+        // Extract dimensions from error message
+        const match = dimensionErrors[0].error.match(/expecting embedding with dimension of (\d+), got (\d+)/);
+        if (match && match.length === 3) {
+          const expectedDim = parseInt(match[1]);
+          response.fixInstructions = 
+            `Embedding dimension mismatch detected. To fix this issue, run:\n` +
+            `npm run fix:chroma-dimensions:${expectedDim}\n\n` +
+            `This will fix the collection to use ${expectedDim}-dimensional embeddings.`;
+        }
+      }
+    }
+    
+    return res.status(200).json(response);
   } catch (error) {
     console.error('Error syncing utils-data files:', error);
     return res.status(500).json({ 
