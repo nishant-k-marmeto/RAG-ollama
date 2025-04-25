@@ -18,7 +18,11 @@ function getOllamaClient() {
       host: process.env.OLLAMA_HOST || 'http://localhost:11434',
       keepAlive: true,
       keepAliveMsecs: 300000, // 5 minutes
-      headers: { 'Connection': 'keep-alive' }
+      headers: { 'Connection': 'keep-alive' },
+      options: {
+        num_gpu: 1, // Enable GPU if available
+        numa: true  // NUMA optimization for multi-socket systems
+      }
     });
   }
   return ollamaClient;
@@ -44,91 +48,124 @@ async function ensureOllamaConnection() {
 }
 
 /**
- * Process and generate the chat response using ollama 
- * @param {Array} conversation - The conversation history
- * @returns {Promise<Object>} The response from the LLM
+ * Chat with context from ChromaDB and maintain conversation history
+ * @param {string} conversationId - Unique conversation identifier
+ * @param {string} userMessage - The user's message
+ * @param {boolean} useChainOfThought - Whether to use chain-of-thought reasoning
+ * @returns {object} The response object
  */
-async function processChat(conversation) {
+async function chatWithContext(conversationId, userMessage, useChainOfThought = false) {
   try {
-    console.log('ChatService: Processing chat request');
+    console.log('==== CHAT SERVICE START ====');
+    console.log(`Conversation ID: ${conversationId}`);
+    console.log(`User message: "${userMessage.substring(0, 100)}${userMessage.length > 100 ? '...' : ''}"`);
+    console.log(`Chain of thought: ${useChainOfThought}`);
     
     // Ensure Ollama connection is active
     await ensureOllamaConnection();
     
-    // Format the conversation for Ollama
-    const messages = conversation.map(msg => ({
-      role: msg.role === 'user' ? 'user' : 'assistant',
-      content: msg.content
-    }));
+    // Format the conversation with just the current message
+    const messages = [
+      {
+        role: 'user',
+        content: userMessage
+      }
+    ];
     
-    // Pre-process to check if this is a RAG query (contain the query_embeddings flag)
-    const isRagQuery = messages.length > 0 && 
-                       messages[messages.length - 1].role === 'user' && 
-                       messages[messages.length - 1].content.includes('query_embeddings:');
+    // Create system message with instructions
+    let systemPrompt = `You are a knowledgeable assistant with access to a specialized database.
+      When answering questions:
+      1. First analyze the context carefully
+      2. Cite specific documents when possible
+      3. Format responses with bullet points for readability
+      4. If uncertain, acknowledge limitations`;
     
-    let userQuery = '';
+    // Add chain-of-thought instructions if enabled
+    if (useChainOfThought) {
+      systemPrompt += `\n\nIMPORTANT: Use a step-by-step thinking process to solve problems or answer questions. 
+First, understand the question. Then, analyze the available information. 
+Finally, reason through to the answer, showing your work by prefacing it with "Thinking: ".
+After you've worked through your reasoning, provide a clear, concise answer.`;
+    }
+
+    // Add system message to the beginning
+    messages.unshift({ role: 'system', content: systemPrompt });
     
-    // If this is a RAG query, extract the actual query and perform semantic search
-    if (isRagQuery) {
-      console.log('ChatService: RAG query detected');
-      userQuery = messages[messages.length - 1].content.replace('query_embeddings:', '').trim();
-      
-      // Update the last message to just contain the pure query
-      messages[messages.length - 1].content = userQuery;
-      
-      // Get the collection for embeddings lookup
+    // Try to get relevant documents from ChromaDB
+    let context = '';
+    let relevantDocs = [];
+    
+    try {
+      console.log('Querying ChromaDB for relevant documents...');
+      const startQueryTime = Date.now();
       const collection = await getOrCreateCollection(COLLECTION_NAME);
-      
-      // Query for relevant conversation snippets
-      console.log(`ChatService: Querying ChromaDB for: "${userQuery.substring(0, 50)}..."`);
-      
-      // Get collection results directly without caching
-      const results = await queryCollection(collection, 3, [userQuery]);
+      const results = await queryCollection(collection, 3, [userMessage]);
+      const endQueryTime = Date.now();
+      console.log(`ChromaDB query completed in ${endQueryTime - startQueryTime}ms`);
       
       if (results && results.documents && results.documents[0] && results.documents[0].length > 0) {
-        console.log(`ChatService: Found ${results.documents[0].length} relevant past conversations`);
+        console.log(`Found ${results.documents[0].length} relevant documents`);
+        // Format documents from ChromaDB
+        context = results.documents[0].join('\n\n');
         
-        // Add the relevant past conversations as context
-        const context = results.documents[0].join('\n\n');
+        // Map the documents for response
+        relevantDocs = results.documents[0].map((doc, index) => ({
+          id: results.ids[0][index],
+          title: results.metadatas[0][index]?.source || `Document ${index + 1}`,
+          content: doc.substring(0, 100) + '...'
+        }));
         
-        // Insert a system message with the context right before the user's message
-        messages.splice(messages.length - 1, 0, {
-          role: 'system',
-          content: `The following are relevant excerpts from past conversations that may help you answer the upcoming question:\n\n${context}\n\nUse this information if relevant to answer the user's next question, but don't mention that you're using past conversation history unless explicitly asked.`
-        });
+        // Add context as a separate message if we have it
+        if (context) {
+          messages.splice(1, 0, {
+            role: 'system', 
+            content: `Context information:\n${context}`
+          });
+        }
       } else {
-        console.log('ChatService: No relevant past conversations found');
+        console.log('No relevant documents found in ChromaDB');
       }
+    } catch (error) {
+      console.error('Error querying ChromaDB:', error);
     }
     
-    // Generate response
-    console.log('ChatService: Calling Ollama for chat response');
-    const startTime = Date.now();
-    const response = await getOllamaClient().chat({
-      model: 'llama3.2',
-      messages: messages,
-      options: {
-        temperature: 0.7,
-        top_p: 0.9,
-        num_ctx: 4096,
-      }
-    });
-    const endTime = Date.now();
-    console.log(`ChatService: Ollama response received in ${endTime - startTime}ms`);
+    console.log(`Prepared ${messages.length} messages for Ollama`);
+    console.log('Calling Ollama...');
     
-    // Return the LLM response
-    return {
-      message: {
-        role: 'assistant',
-        content: response.message.content
-      },
-      metrics: {
-        responseTime: endTime - startTime
-      }
-    };
+    // Generate the response
+    const startOllamaTime = Date.now();
+    
+    try {
+      console.log('Using persistent Ollama client...');
+      const response = await getOllamaClient().chat({
+        model: 'llama3.2',
+        temperature: 0.7,
+        messages: messages,
+        options: {
+          top_p: 0.9,
+          num_ctx: 4096,
+        }
+      });
+      
+      const endOllamaTime = Date.now();
+      console.log(`Ollama response received in ${endOllamaTime - startOllamaTime}ms`);
+      
+      console.log('==== CHAT SERVICE END ====');
+      
+      return {
+        answer: response.message.content,
+        documents: relevantDocs
+      };
+    } catch (ollamaError) {
+      console.error('Ollama error:', ollamaError);
+      console.error('Ollama error details:', ollamaError.stack);
+      throw ollamaError;
+    }
   } catch (error) {
-    console.error('ChatService: Error processing chat:', error);
-    throw new Error(`Failed to process chat: ${error.message}`);
+    console.error('==== CHAT SERVICE ERROR ====');
+    console.error('Error in chat with context:', error);
+    console.error('Stack trace:', error.stack);
+    throw new Error('Failed to generate chat response: ' + error.message);
   }
 }
 
@@ -234,7 +271,7 @@ async function streamChat(conversation, onToken) {
 }
 
 export {
-  processChat,
+  chatWithContext,
   streamChat,
   ensureOllamaConnection
 }; 
