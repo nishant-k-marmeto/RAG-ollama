@@ -1,6 +1,8 @@
-const { ChromaClient } = require('chromadb');
-const { OllamaEmbeddingFunction } = require('chromadb');
-require('dotenv').config();
+import { ChromaClient, OllamaEmbeddingFunction } from 'chromadb';
+import dotenv from 'dotenv';
+
+// Initialize environment variables
+dotenv.config();
 
 // Hardcoded dimension value to 384
 const TARGET_DIMENSION = 384;
