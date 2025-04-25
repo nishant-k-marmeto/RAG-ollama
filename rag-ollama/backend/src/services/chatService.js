@@ -138,8 +138,7 @@ After you've worked through your reasoning, provide a clear, concise answer.`;
     try {
       console.log('Using persistent Ollama client...');
       const response = await getOllamaClient().chat({
-        model: 'llama3.2',
-        temperature: 0.7,
+        model: 'llama3.2:1b',
         messages: messages,
         options: {
           top_p: 0.9,
@@ -234,7 +233,7 @@ async function streamChat(conversation, onToken) {
     
     let fullResponse = '';
     await getOllamaClient().chat({
-      model: 'llama3.2',
+      model: 'llama3.2:1b',
       messages: messages,
       stream: true,
       options: {

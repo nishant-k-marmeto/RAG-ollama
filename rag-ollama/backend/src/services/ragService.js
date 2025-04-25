@@ -5,7 +5,7 @@ import { getOrCreateCollection, queryCollection } from '../utils/chromadb.js';
 let ollamaClient = null;
 
 // Model warmup configuration
-const MODELS_TO_WARMUP = ['llama3.2']; // Add more models as needed
+const MODELS_TO_WARMUP = ['llama3.2:1b']; // Add more models as needed
 const WARMUP_INTERVAL = 15 * 60 * 1000; // 15 minutes
 
 /**
@@ -274,7 +274,7 @@ async function queryWithContext(userQuery, numResults = 3) {
     console.log('RAGService: Generating answer with Ollama...');
     const startTime = Date.now();
     const response = await getOllamaClient().chat({
-      model: 'llama3.2',
+      model: 'llama3.2:1b',
       messages: messages,
       options: {
         temperature: 0.7,
@@ -372,7 +372,7 @@ async function streamQueryWithContext(userQuery, numResults = 3, onToken) {
     
     let fullResponse = '';
     await getOllamaClient().chat({
-      model: 'llama3.2',
+      model: 'llama3.2:1b',
       messages: messages,
       stream: true,
       options: {
