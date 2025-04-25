@@ -192,15 +192,51 @@ const DocumentsPage = () => {
     setSyncError(null);
     
     try {
+      console.log('Syncing utils-data directory...');
       const response = await api.syncUtilsDataFiles();
-      setSyncSuccess(`${response.message} (${response.totalChunks} chunks from ${response.files.length} files)`);
+      console.log('Sync response:', response);
+      
+      // Enhanced success message with more details
+      let successMsg = `${response.message} (${response.totalChunks} chunks from ${response.files.length} files)`;
+      
+      // Add directory path to help users locate where to put files
+      if (response.directoryPath) {
+        successMsg += `\n\nUtils-data directory path: ${response.directoryPath}`;
+      }
+      
+      // Add details about which files were processed
+      if (response.files && response.files.length > 0) {
+        successMsg += '\n\nProcessed files:';
+        response.files.forEach(file => {
+          successMsg += `\n- ${file.name} (${file.type}, ${file.chunks} chunks)`;
+        });
+      }
+      
+      setSyncSuccess(successMsg);
       
       // Refresh documents
       const docsResponse = await api.getDocuments();
       setDocuments(docsResponse.documents);
     } catch (err) {
       console.error('Error syncing utils-data files:', err);
-      setSyncError(err.response?.data?.error || 'Failed to sync utils-data files');
+      
+      // Enhanced error message with more details
+      let errorMsg = 'Failed to sync utils-data files';
+      
+      if (err.response?.data?.error) {
+        errorMsg += `: ${err.response.data.error}`;
+      }
+      
+      if (err.response?.data?.path) {
+        errorMsg += `\n\nDirectory path: ${err.response.data.path}`;
+        errorMsg += '\n\nPlease ensure this directory exists and contains .txt or .csv files.';
+      }
+      
+      if (err.response?.data?.stack) {
+        console.error('Error stack:', err.response.data.stack);
+      }
+      
+      setSyncError(errorMsg);
     } finally {
       setSyncLoading(false);
     }
@@ -423,13 +459,27 @@ const DocumentsPage = () => {
         <p>This will scan the backend's utils-data directory and add all compatible files (CSV, TXT) to the knowledge base.</p>
         
         {syncError && (
-          <div style={{ color: 'red', margin: '1rem 0' }}>
+          <div style={{ 
+            color: 'red', 
+            margin: '1rem 0', 
+            padding: '1rem',
+            backgroundColor: '#ffebee',
+            borderRadius: '4px',
+            whiteSpace: 'pre-wrap'
+          }}>
             {syncError}
           </div>
         )}
         
         {syncSuccess && (
-          <div style={{ color: 'green', margin: '1rem 0' }}>
+          <div style={{ 
+            color: 'green', 
+            margin: '1rem 0',
+            padding: '1rem',
+            backgroundColor: '#e8f5e9',
+            borderRadius: '4px',
+            whiteSpace: 'pre-wrap' 
+          }}>
             {syncSuccess}
           </div>
         )}
@@ -441,13 +491,18 @@ const DocumentsPage = () => {
             backgroundColor: '#2196F3', 
             color: 'white', 
             padding: '10px 20px', 
-            cursor: 'pointer', 
+            cursor: syncLoading ? 'not-allowed' : 'pointer', 
             border: 'none', 
-            borderRadius: '4px' 
+            borderRadius: '4px',
+            opacity: syncLoading ? 0.7 : 1
           }}
         >
           {syncLoading ? 'Syncing...' : 'Sync utils-data Files'}
         </button>
+        
+        <p style={{ marginTop: '1rem', fontSize: '0.9rem', color: '#666' }}>
+          <strong>Tip:</strong> Place text (.txt) or CSV (.csv) files in the backend's utils-data directory to synchronize them.
+        </p>
       </div>
       
       {/* Delete all documents section */}

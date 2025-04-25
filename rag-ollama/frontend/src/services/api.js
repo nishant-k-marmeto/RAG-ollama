@@ -3,8 +3,8 @@ import axios from 'axios';
 // Log when the API service is loaded
 console.log('API service initializing...');
 
-// Set base URL for all API calls - log it for debugging
-const API_BASE_URL = 'https://ai-tool.marmeto.com/api';
+// Set base URL for all API calls - make it configurable
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 console.log('API_BASE_URL:', API_BASE_URL);
 
 // Document management API functions

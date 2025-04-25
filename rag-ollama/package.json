@@ -6,15 +6,16 @@
   "scripts": {
     "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:all": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:all": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\"",
     "start:frontend": "cd frontend && npm run dev",
     "start:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "cd backend && npm run dev",
-    "start:chroma": "cd backend && npm run start:chroma",
-    "stop:chroma": "cd backend && npm run stop:chroma",
+    "start:chroma": "docker run -d -p 8000:8000 chromadb/chroma",
+    "stop:chroma": "docker stop $(docker ps -q --filter ancestor=chromadb/chroma)",
     "build": "cd frontend && npm run build",
-    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install"
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
+    "test:utils-data": "cd backend && node src/scripts/test-utils-data.js"
   },
   "keywords": [
     "rag",

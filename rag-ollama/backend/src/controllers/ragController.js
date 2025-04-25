@@ -223,10 +223,34 @@ export const syncUtilsDataFiles = async (req, res) => {
     const __dirname = path.dirname(__filename);
     const utilsDataDir = path.join(__dirname, '../../utils-data');
     
+    console.log(`Looking for utils-data directory at: ${utilsDataDir}`);
+    
     // Ensure the directory exists
     if (!fs.existsSync(utilsDataDir)) {
-      return res.status(404).json({ error: 'Utils-data directory not found' });
+      // Try to create the directory if it doesn't exist
+      try {
+        fs.mkdirSync(utilsDataDir, { recursive: true });
+        console.log(`Created utils-data directory at: ${utilsDataDir}`);
+      } catch (dirError) {
+        console.error(`Failed to create utils-data directory: ${dirError.message}`);
+        return res.status(404).json({ 
+          error: 'Utils-data directory not found and could not be created',
+          path: utilsDataDir 
+        });
+      }
     }
+    
+    // Check if directory is empty
+    const dirContents = fs.readdirSync(utilsDataDir);
+    if (dirContents.length === 0) {
+      console.log(`Utils-data directory exists but is empty: ${utilsDataDir}`);
+      return res.status(404).json({ 
+        error: 'Utils-data directory is empty. Please add files to synchronize.',
+        path: utilsDataDir 
+      });
+    }
+    
+    console.log(`Found ${dirContents.length} files/folders in utils-data directory`);
     
     // Get the collection
     const collection = await getOrCreateCollection(COLLECTION_NAME);
@@ -239,63 +263,97 @@ export const syncUtilsDataFiles = async (req, res) => {
     // Process each file
     for (const file of files) {
       const filePath = path.join(utilsDataDir, file);
-      const fileStats = fs.statSync(filePath);
       
-      // Skip directories
-      if (fileStats.isDirectory()) continue;
-      
-      const fileExt = path.extname(file).toLowerCase();
-      const fileName = path.basename(file);
-      const fileId = `utils-data-${fileName.replace(/\s+/g, '-')}`;
-      
-      // Process based on file type
-      if (fileExt === '.csv') {
-        // Process CSV file
-        console.log(`Processing CSV file: ${fileName}`);
-        const rows = [];
-        await new Promise((resolve, reject) => {
-          fs.createReadStream(filePath)
-            .pipe(csv())
-            .on('data', (row) => rows.push(row))
-            .on('end', () => resolve())
-            .on('error', reject);
-        });
+      try {
+        const fileStats = fs.statSync(filePath);
         
-        // Convert to string representation
-        const content = rows.map(row => {
-          return Object.entries(row)
-            .map(([key, value]) => `${key}: ${value}`)
-            .join(', ');
-        }).join('\n');
+        // Skip directories and hidden files
+        if (fileStats.isDirectory() || file.startsWith('.')) {
+          console.log(`Skipping directory or hidden file: ${file}`);
+          continue;
+        }
         
-        // Add to collection
-        await collection.add({
-          ids: [fileId],
-          documents: [content],
-          metadatas: [{ 
-            source: fileName, 
-            type: 'csv',
-            created: new Date().toISOString(),
-            size: fileStats.size
-          }],
-        });
+        const fileExt = path.extname(file).toLowerCase();
+        const fileName = path.basename(file);
+        const fileId = `utils-data-${fileName.replace(/\s+/g, '-')}`;
         
-        processedFiles.push({ name: fileName, type: 'csv', chunks: 1 });
-        totalChunks++;
-      } else if (fileExt === '.txt') {
-        // Process text files
-        const fileContent = fs.readFileSync(filePath, 'utf8');
-        const lines = fileContent.split('\n');
+        console.log(`Processing file: ${fileName} (${fileExt}) with ID: ${fileId}`);
         
-        // Group lines into chunks of approximately 4500 chars each
-        const chunks = [];
-        let currentChunk = '';
-        let chunkId = 1;
-        
-        for (const line of lines) {
-          if (line.trim().length === 0) continue;
+        // Process based on file type
+        if (fileExt === '.csv') {
+          // Process CSV file
+          console.log(`Processing CSV file: ${fileName}`);
+          const rows = [];
+          await new Promise((resolve, reject) => {
+            fs.createReadStream(filePath)
+              .pipe(csv())
+              .on('data', (row) => rows.push(row))
+              .on('end', () => resolve())
+              .on('error', (err) => {
+                console.error(`Error reading CSV ${fileName}:`, err);
+                reject(err);
+              });
+          });
           
-          if (currentChunk.length + line.length > 4500 && currentChunk.length > 0) {
+          console.log(`Read ${rows.length} rows from CSV file ${fileName}`);
+          
+          // Convert to string representation
+          const content = rows.map(row => {
+            return Object.entries(row)
+              .map(([key, value]) => `${key}: ${value}`)
+              .join(', ');
+          }).join('\n');
+          
+          // Add to collection
+          console.log(`Adding CSV content to ChromaDB (${content.length} characters)`);
+          await collection.add({
+            ids: [fileId],
+            documents: [content],
+            metadatas: [{ 
+              source: fileName, 
+              type: 'csv',
+              created: new Date().toISOString(),
+              size: fileStats.size
+            }],
+          });
+          
+          processedFiles.push({ name: fileName, type: 'csv', chunks: 1 });
+          totalChunks++;
+        } else if (fileExt === '.txt') {
+          // Process text files
+          console.log(`Processing TXT file: ${fileName}`);
+          const fileContent = fs.readFileSync(filePath, 'utf8');
+          const lines = fileContent.split('\n');
+          
+          console.log(`Read ${lines.length} lines from TXT file ${fileName}`);
+          
+          // Group lines into chunks of approximately 4500 chars each
+          const chunks = [];
+          let currentChunk = '';
+          let chunkId = 1;
+          
+          for (const line of lines) {
+            if (line.trim().length === 0) continue;
+            
+            if (currentChunk.length + line.length > 4500 && currentChunk.length > 0) {
+              chunks.push({
+                id: `${fileId}-chunk-${chunkId}`,
+                content: currentChunk.trim(),
+                metadata: {
+                  source: fileName,
+                  chunk: chunkId,
+                  type: 'text'
+                }
+              });
+              chunkId++;
+              currentChunk = '';
+            }
+            
+            currentChunk += line + '\n';
+          }
+          
+          // Add the last chunk if not empty
+          if (currentChunk.trim().length > 0) {
             chunks.push({
               id: `${fileId}-chunk-${chunkId}`,
               content: currentChunk.trim(),
@@ -305,53 +363,84 @@ export const syncUtilsDataFiles = async (req, res) => {
                 type: 'text'
               }
             });
-            chunkId++;
-            currentChunk = '';
           }
           
-          currentChunk += line + '\n';
-        }
-        
-        // Add the last chunk if not empty
-        if (currentChunk.trim().length > 0) {
-          chunks.push({
-            id: `${fileId}-chunk-${chunkId}`,
-            content: currentChunk.trim(),
-            metadata: {
-              source: fileName,
-              chunk: chunkId,
-              type: 'text'
+          console.log(`Created ${chunks.length} chunks from TXT file ${fileName}`);
+          
+          // Add chunks to collection
+          if (chunks.length > 0) {
+            try {
+              console.log(`Adding ${chunks.length} chunks to ChromaDB...`);
+              await collection.add({
+                ids: chunks.map(chunk => chunk.id),
+                documents: chunks.map(chunk => chunk.content),
+                metadatas: chunks.map(chunk => chunk.metadata)
+              });
+              console.log(`Successfully added ${chunks.length} chunks to ChromaDB`);
+            } catch (error) {
+              console.error(`Failed to add ${fileName} chunks to ChromaDB:`, error);
+              // Error is caught but NOT returned to the client
             }
-          });
-        }
-        
-        // Add chunks to collection
-        if (chunks.length > 0) {
-          try {
-            await collection.add({
-              ids: chunks.map(chunk => chunk.id),
-              documents: chunks.map(chunk => chunk.content),
-              metadatas: chunks.map(chunk => chunk.metadata)
-            });
-          } catch (error) {
-            console.error(`Failed to add ${fileName} chunks to ChromaDB:`, error);
-            // Error is caught but NOT returned to the client
           }
+          
+          processedFiles.push({ name: fileName, type: 'text', chunks: chunks.length });
+          totalChunks += chunks.length;
+        } else {
+          console.log(`Skipping unsupported file type: ${fileExt} for file ${fileName}`);
         }
-        
-        processedFiles.push({ name: fileName, type: 'text', chunks: chunks.length });
-        totalChunks += chunks.length;
+      } catch (fileError) {
+        console.error(`Error processing file ${file}:`, fileError);
+        // Continue processing other files
       }
+    }
+    
+    // Get and display embeddings for the first few documents in the collection
+    try {
+      console.log('Fetching embeddings from ChromaDB...');
+      const result = await collection.get({ 
+        include: ["embeddings", "documents", "metadatas"],
+        limit: 3 // Limit to first 3 documents for readability
+      });
+      
+      if (result && result.embeddings && result.embeddings.length > 0) {
+        console.log(`\n====== EMBEDDING INFORMATION ======`);
+        console.log(`Total documents in collection: ${result.ids.length}`);
+        console.log(`Embedding dimensions: ${result.embeddings[0].length}`);
+        
+        for (let i = 0; i < Math.min(result.ids.length, 3); i++) {
+          const embedding = result.embeddings[i];
+          console.log(`\nDocument ID: ${result.ids[i]}`);
+          console.log(`Document: "${result.documents[i].substring(0, 50)}..."`);
+          
+          // Get embedding statistics
+          const embSum = embedding.reduce((sum, val) => sum + val, 0);
+          const embAvg = embSum / embedding.length;
+          const embMin = Math.min(...embedding);
+          const embMax = Math.max(...embedding);
+          
+          console.log(`Embedding stats: dimension=${embedding.length}, avg=${embAvg.toFixed(4)}, min=${embMin.toFixed(4)}, max=${embMax.toFixed(4)}`);
+          console.log(`Embedding preview: [${embedding.slice(0, 5).map(n => n.toFixed(4)).join(', ')}...]`);
+        }
+        console.log(`\n===================================`);
+      } else {
+        console.log('No embeddings found in collection');
+      }
+    } catch (embeddingError) {
+      console.error('Error fetching embeddings:', embeddingError);
     }
     
     return res.status(200).json({ 
       message: `Successfully synced ${processedFiles.length} files from utils-data directory`,
       files: processedFiles,
-      totalChunks
+      totalChunks,
+      directoryPath: utilsDataDir
     });
   } catch (error) {
     console.error('Error syncing utils-data files:', error);
-    return res.status(500).json({ error: 'Failed to sync files: ' + error.message });
+    return res.status(500).json({ 
+      error: 'Failed to sync files: ' + error.message,
+      stack: error.stack // Include stack trace for debugging
+    });
   }
 };
 
