@@ -115,11 +115,18 @@ export async function queryCollection(collection, nResults, queryTexts, options 
     const queryParams = {
       nResults,
       queryTexts,
-      // Default to cosine distance for better semantic matching
-      where: options.where || {},
-      whereDocument: options.whereDocument || {},
       include: ["metadatas", "documents", "distances"], // Include all data
     };
+    
+    // Only add where clause if it's not empty
+    if (options.where && Object.keys(options.where).length > 0) {
+      queryParams.where = options.where;
+    }
+    
+    // Only add whereDocument if it's not empty
+    if (options.whereDocument && Object.keys(options.whereDocument).length > 0) {
+      queryParams.whereDocument = options.whereDocument;
+    }
     
     // Add advanced parameters if specified
     if (options.mmr) {
