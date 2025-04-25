@@ -345,7 +345,7 @@ export const syncUtilsDataFiles = async (req, res) => {
           
           console.log(`Read ${lines.length} lines from TXT file ${fileName}`);
           
-          // Group lines into chunks of approximately 4500 chars each
+          // Group lines into chunks of approximately 500 chars each (appropriate for 384-dim embeddings)
           const chunks = [];
           let currentChunk = '';
           let chunkId = 1;
@@ -353,7 +353,7 @@ export const syncUtilsDataFiles = async (req, res) => {
           for (const line of lines) {
             if (line.trim().length === 0) continue;
             
-            if (currentChunk.length + line.length > 4500 && currentChunk.length > 0) {
+            if (currentChunk.length + line.length > 500 && currentChunk.length > 0) {
               chunks.push({
                 id: `${fileId}-chunk-${chunkId}`,
                 content: currentChunk.trim(),
@@ -550,7 +550,7 @@ export const uploadFileContent = async (req, res) => {
       // Process as plain text - split into chunks
       const lines = content.split('\n');
       
-      // Group lines into chunks of approximately 4500 chars each
+      // Group lines into chunks of approximately 500 chars each (appropriate for 384-dim embeddings)
       const chunks = [];
       let currentChunk = '';
       let chunkId = 1;
@@ -558,7 +558,7 @@ export const uploadFileContent = async (req, res) => {
       for (const line of lines) {
         if (line.trim().length === 0) continue;
         
-        if (currentChunk.length + line.length > 4500 && currentChunk.length > 0) {
+        if (currentChunk.length + line.length > 500 && currentChunk.length > 0) {
           chunks.push({
             id: `${fileId}-chunk-${chunkId}`,
             content: currentChunk.trim(),

@@ -79,7 +79,7 @@ export async function checkCollectionEmbeddingDimension(collectionName) {
           const embeddingFunction = new OllamaEmbeddingFunction({
             url: process.env.OLLAMA_HOST || "http://localhost:11434",
             model: process.env.OLLAMA_EMBEDDING_MODEL || "llama3:1b",
-            dimensions: 4096
+            dimensions: dimension
           });
           
           // Create a new client with this embedding function

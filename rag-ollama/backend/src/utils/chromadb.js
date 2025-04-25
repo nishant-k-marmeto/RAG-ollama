@@ -6,10 +6,11 @@ const client = new ChromaClient({
   apiPath: process.env.CHROMA_API_PATH || "/api/v2",
 });
 
-// Initialize the Ollama embedding function
+// Initialize the Ollama embedding function with hardcoded 384 dimensions
 const embeddingFunction = new OllamaEmbeddingFunction({
   url: process.env.OLLAMA_HOST || "http://localhost:11434",
-  model: "llama3.2:1b" // Using the same model as in ragService for consistency
+  model: "llama3.2:1b", // Using a smaller model for consistency
+  dimensions: 384 // Hardcoded dimension to ensure consistency
 });
 
 // Simple in-memory LRU cache for queries

@@ -109,7 +109,7 @@ async function processAndAddCsv(filePath, collection) {
  * @param {number} overlap - Overlap between chunks
  * @returns {string[]} Array of text chunks
  */
-export function chunkText(text, size = 1000, overlap = 200) {
+export function chunkText(text, size = 500, overlap = 100) {
   const chunks = [];
   let startIndex = 0;
   
