@@ -201,10 +201,10 @@ the Company and relevant stakeholders within Marmeto.
 This policy applies to all members of Marmeto.
 Types of Separation
 There are four types of Separation:
-a) Voluntary
-b) Involuntary
-c) End of term of employment (Contract)
-d) Death
+a. Voluntary
+b. Involuntary
+c. End of term of employment (Contract)
+d. Death
 VOLUNTARY SEPARATION:
 ● Voluntary separation is a resignation initiated by the member, desirous of leaving the services of the Organisation.
 Members need to send a written communication (email) to the immediate supervisor stating his /her intent to resign.
