@@ -8,7 +8,7 @@ dotenv.config();
 const COLLECTION_NAME = process.env.COLLECTION_NAME || 'rag_documents';
 
 // Default dimension
-const TARGET_DIMENSION = 384;
+const TARGET_DIMENSION = 768;
 
 /**
  * Reset the ChromaDB collection with the correct embedding dimensions

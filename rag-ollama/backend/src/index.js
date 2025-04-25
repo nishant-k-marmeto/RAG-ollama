@@ -5,7 +5,6 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import axios from 'axios';
-
 // Import routes
 import ragRoutes from './routes/ragRoutes.js';
 

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import csv from 'csv-parser';
+import { splitSentences } from 'sentence-splitter';
 
 /**
  * Adds files from a directory to a ChromaDB collection
@@ -23,8 +23,8 @@ export async function addFilesToCollection(dirPath, collection) {
         continue;
       }
 
-      if (fileExt === '.pdf') {
-        await processAndAddPdf(filePath, collection);
+      if (fileExt === '.txt') {
+        await processAndAddText(filePath, collection);
         documentCount++;
       } else if (fileExt === '.csv') {
         await processAndAddCsv(filePath, collection);
@@ -43,26 +43,54 @@ export async function addFilesToCollection(dirPath, collection) {
 }
 
 /**
- * Process and add PDF content to ChromaDB
- * @param {string} filePath - Path to PDF file
+ * Process and add text content to ChromaDB
+ * @param {string} filePath - Path to text file
  * @param {object} collection - ChromaDB collection
  */
-async function processAndAddPdf(filePath, collection) {
+async function processAndAddText(filePath, collection) {
   try {
-    // We'll use a PDF parser library here
-    // This is a placeholder for the actual PDF parsing
-    const pdfContent = `Content from PDF: ${path.basename(filePath)}`;
+    // Read text file
+    const content = fs.readFileSync(filePath, 'utf8');
+    const fileName = path.basename(filePath);
     
-    // Add to collection
-    await collection.add({
-      ids: [`pdf-${Date.now()}-${Math.floor(Math.random() * 1000)}`],
-      documents: [pdfContent],
-      metadatas: [{ source: filePath, type: 'pdf' }],
-    });
+    // Split content into semantically meaningful chunks using sentence-splitter
+    const chunks = chunkTextBySentences(content);
+    console.log(`Split ${fileName} into ${chunks.length} chunks based on sentences`);
     
-    console.log(`Added PDF: ${filePath}`);
+    if (chunks.length > 0) {
+      // Generate unique IDs for each chunk
+      const ids = chunks.map((_, index) => 
+        `txt-${fileName}-${Date.now()}-${index}`
+      );
+      
+      // Prepare metadata for each chunk
+      const metadatas = chunks.map((_, index) => ({
+        source: fileName,
+        type: 'text',
+        chunk: index + 1,
+        totalChunks: chunks.length
+      }));
+      
+      // Add all chunks to collection
+      await collection.add({
+        ids,
+        documents: chunks,
+        metadatas
+      });
+      
+      console.log(`Added ${chunks.length} chunks from text file: ${fileName}`);
+    } else {
+      // If no chunks were created, add the entire content as one document
+      await collection.add({
+        ids: [`txt-${fileName}-${Date.now()}`],
+        documents: [content],
+        metadatas: [{ source: fileName, type: 'text' }],
+      });
+      
+      console.log(`Added text file: ${fileName} as a single document`);
+    }
   } catch (error) {
-    console.error(`Error processing PDF ${filePath}:`, error);
+    console.error(`Error processing text file ${filePath}:`, error);
     throw error;
   }
 }
@@ -90,12 +118,12 @@ async function processAndAddCsv(filePath, collection) {
     
     // Add to collection
     await collection.add({
-      ids: [`csv-${Date.now()}-${Math.floor(Math.random() * 1000)}`],
+      ids: [`csv-${path.basename(filePath)}-${Date.now()}`],
       documents: [csvContent],
-      metadatas: [{ source: filePath, type: 'csv' }],
+      metadatas: [{ source: path.basename(filePath), type: 'csv' }],
     });
     
-    console.log(`Added CSV: ${filePath}`);
+    console.log(`Added CSV: ${path.basename(filePath)}`);
   } catch (error) {
     console.error(`Error processing CSV ${filePath}:`, error);
     throw error;
@@ -103,13 +131,62 @@ async function processAndAddCsv(filePath, collection) {
 }
 
 /**
- * Chunk text into smaller pieces
+ * Chunk text into smaller pieces based on sentences
+ * @param {string} text - The text to chunk
+ * @param {number} maxChunkSize - Maximum size of each chunk (approximate target)
+ * @returns {string[]} Array of text chunks divided by sentences
+ */
+export function chunkTextBySentences(text, maxChunkSize = 1000) {
+  try {
+    // Use sentence-splitter to get an array of sentence nodes
+    const sentenceNodes = splitSentences(text);
+    
+    // Extract just the raw sentences
+    const sentences = sentenceNodes
+      .filter(node => node.type === 'Sentence')
+      .map(node => node.raw);
+    
+    if (sentences.length === 0) {
+      return [text]; // Return original text if no sentences detected
+    }
+    
+    const chunks = [];
+    let currentChunk = '';
+    
+    for (const sentence of sentences) {
+      // If adding this sentence would exceed the target size and we already have content,
+      // start a new chunk
+      if (currentChunk.length + sentence.length > maxChunkSize && currentChunk.length > 0) {
+        chunks.push(currentChunk.trim());
+        currentChunk = '';
+      }
+      
+      // Add the sentence to the current chunk
+      currentChunk += sentence + ' ';
+    }
+    
+    // Add the final chunk if it has content
+    if (currentChunk.trim().length > 0) {
+      chunks.push(currentChunk.trim());
+    }
+    
+    console.log(`Split text into ${chunks.length} semantically meaningful chunks`);
+    return chunks;
+  } catch (error) {
+    console.error('Error chunking text by sentences:', error);
+    // Fall back to character-based chunking if sentence splitting fails
+    return chunkText(text, maxChunkSize);
+  }
+}
+
+/**
+ * Legacy character-based text chunking (fallback method)
  * @param {string} text - The text to chunk
  * @param {number} size - Chunk size
  * @param {number} overlap - Overlap between chunks
  * @returns {string[]} Array of text chunks
  */
-export function chunkText(text, size = 500, overlap = 100) {
+export function chunkText(text, size = 1000, overlap = 200) {
   const chunks = [];
   let startIndex = 0;
   

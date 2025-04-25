@@ -1,16 +1,22 @@
-import { ChromaClient, OllamaEmbeddingFunction } from 'chromadb';
+import { ChromaClient } from 'chromadb';
+import { OllamaEmbeddingFunction } from './ollamaEmbeddings.js';
 
-// Initialize ChromaDB client
+// Initialize ChromaClient with default settings
 const client = new ChromaClient({
   path: process.env.CHROMA_URL || "http://localhost:8000",
   apiPath: process.env.CHROMA_API_PATH || "/api/v2",
 });
 
-// Initialize the Ollama embedding function with hardcoded 384 dimensions
+// Initialize the Ollama embedding function
 const embeddingFunction = new OllamaEmbeddingFunction({
-  url: process.env.OLLAMA_HOST || "http://localhost:11434",
-  model: "llama3.2:1b", // Using a smaller model for consistency
-  dimensions: 384 // Hardcoded dimension to ensure consistency
+  model: 'nomic-embed-text',
+  host: process.env.OLLAMA_HOST || 'http://localhost:11434',
+  debugMode: process.env.DEBUG_EMBEDDINGS === 'true', // Enable based on environment variable
+  debugOptions: {
+    saveToFile: process.env.SAVE_EMBEDDINGS === 'true',
+    outputDir: './debug-embeddings',
+    logFull: false
+  }
 });
 
 // Simple in-memory LRU cache for queries
@@ -23,16 +29,15 @@ const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
  * @param {string} name - Collection name
  * @returns {object} The ChromaDB collection
  */
-export async function getOrCreateCollection(name = "nishant-collection") {
+export async function getOrCreateCollection(name = "rag_documents") {
   try {
     console.log(`Attempting to get or create collection: ${name}`);
     const collection = await client.getOrCreateCollection({
       name,
       metadata: {
-        description: "RAG System Documents",
-        "hnsw:space": "l2"
+        description: "RAG System Documents"
       },
-      embeddingFunction,
+      embeddingFunction
     });
     
     console.log(`Collection "${name}" ready`);
@@ -97,7 +102,7 @@ function generateCacheKey(collection, nResults, queryTexts, options = {}) {
 }
 
 /**
- * Query a collection for relevant documents with optimized performance
+ * Query a collection for relevant documents
  * @param {object} collection - The ChromaDB collection
  * @param {number} nResults - Number of results to return
  * @param {string[]} queryTexts - Array of query texts
@@ -115,11 +120,11 @@ export async function queryCollection(collection, nResults, queryTexts, options 
       return cachedResults;
     }
     
-    // Setup query parameters with optimizations
+    // Setup query parameters
     const queryParams = {
       nResults,
       queryTexts,
-      include: ["metadatas", "documents", "distances"], // Include all data
+      include: ["metadatas", "documents", "distances"],
     };
     
     // Only add where clause if it's not empty
@@ -130,15 +135,6 @@ export async function queryCollection(collection, nResults, queryTexts, options 
     // Only add whereDocument if it's not empty
     if (options.whereDocument && Object.keys(options.whereDocument).length > 0) {
       queryParams.whereDocument = options.whereDocument;
-    }
-    
-    // Add advanced parameters if specified
-    if (options.mmr) {
-      // Maximum marginal relevance for better diversity
-      queryParams.mmrConfig = {
-        enabled: true,
-        diversityBias: options.mmr.diversityBias || 0.3
-      };
     }
     
     // Log query performance
@@ -186,26 +182,6 @@ export async function getAllDocuments(collection) {
     return await collection.get();
   } catch (error) {
     console.error('Error getting all documents:', error);
-    throw error;
-  }
-}
-
-/**
- * Delete a document from a collection
- * @param {object} collection - The ChromaDB collection
- * @param {string} id - Document ID to delete
- */
-export async function deleteDocument(collection, id) {
-  try {
-    await collection.delete({
-      ids: [id]
-    });
-    console.log(`Document ${id} deleted`);
-    
-    // Clear cache as content has changed
-    queryCache.clear();
-  } catch (error) {
-    console.error(`Error deleting document ${id}:`, error);
     throw error;
   }
 }

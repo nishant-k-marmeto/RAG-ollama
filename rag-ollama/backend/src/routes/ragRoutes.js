@@ -23,22 +23,18 @@ const logRoute = (req, res, next) => {
 // Apply logging middleware to all routes
 router.use(logRoute);
 
-// Core RAG routes
-router.post('/query', ragController.queryWithContext);
-router.get('/query/stream', ragController.streamQueryWithContext);
-
-// Document management routes
+// Document management routes - essential only
 router.post('/add-document', ragController.addDocument);
-router.post('/upload-files', ragController.uploadFiles);
-router.post('/upload-file-content', ragController.uploadFileContent);
-router.get('/documents', ragController.getAllDocuments);
 router.post('/sync-utils-data', ragController.syncUtilsDataFiles);
 router.delete('/documents', ragController.deleteAllDocuments);
 
-// ChromaDB status check
+// Search route - new
+router.post('/search', ragController.searchDocuments);
+
+// ChromaDB status check - essential
 router.get('/chroma-status', ragController.checkChromaStatus);
 
-// Chat routes
+// Chat routes - keep all
 router.post('/chat', chatController.processChatMessage);
 router.get('/chat/:conversationId/history', chatController.getChatHistory);
 router.delete('/chat/:conversationId', chatController.clearConversation);
