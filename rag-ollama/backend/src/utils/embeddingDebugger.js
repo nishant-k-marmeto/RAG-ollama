@@ -69,52 +69,42 @@ export async function checkCollectionEmbeddingDimension(collectionName) {
     } catch (error) {
       console.log(`Could not determine dimension automatically: ${error.message}`);
       
-      // Try with Ollama embedding function with different dimensions
-      const dimensions = [384, 1536, 2048, 3072, 4096];
-      
-      for (const dimension of dimensions) {
-        try {
-          console.log(`Trying with dimension: ${dimension}...`);
-          
-          const embeddingFunction = new OllamaEmbeddingFunction({
-            url: process.env.OLLAMA_HOST || "http://localhost:11434",
-            model: process.env.OLLAMA_EMBEDDING_MODEL || "llama3:1b",
-            dimensions: dimension
-          });
-          
-          // Create a new client with this embedding function
-          const collectionWithEmbedding = await client.getCollection({
-            name: collectionName,
-            embeddingFunction
-          });
-          
-          // Test adding an item
-          const testId = `dimension-test-${Date.now()}-${dimension}`;
-          await collectionWithEmbedding.add({
-            ids: [testId],
-            documents: [testContent],
-            metadatas: [{ source: "dimension-test" }],
-          });
-          
-          // If we get here, it worked
-          console.log(`Success with dimension: ${dimension}`);
-          
-          // Delete the test item
-          await collectionWithEmbedding.delete({ ids: [testId] });
-          
-          return dimension;
-        } catch (tryError) {
-          if (tryError.message.includes("expecting embedding with dimension")) {
-            // Not this dimension, continue
-            continue;
-          } else {
-            console.error(`Error testing dimension ${dimension}:`, tryError);
-          }
-        }
+      // Only try 384 dimension since that's our hardcoded standard
+      const dimension = 384;
+      try {
+        console.log(`Trying with hardcoded dimension: ${dimension}...`);
+        
+        const embeddingFunction = new OllamaEmbeddingFunction({
+          url: process.env.OLLAMA_HOST || "http://localhost:11434",
+          model: "llama3.2:1b",
+          dimensions: dimension
+        });
+        
+        // Create a new client with this embedding function
+        const collectionWithEmbedding = await client.getCollection({
+          name: collectionName,
+          embeddingFunction
+        });
+        
+        // Test adding an item
+        const testId = `dimension-test-${Date.now()}-${dimension}`;
+        await collectionWithEmbedding.add({
+          ids: [testId],
+          documents: [testContent],
+          metadatas: [{ source: "dimension-test" }],
+        });
+        
+        // If we get here, it worked
+        console.log(`Success with dimension: ${dimension}`);
+        
+        // Delete the test item
+        await collectionWithEmbedding.delete({ ids: [testId] });
+        
+        return dimension;
+      } catch (tryError) {
+        console.error(`Error testing dimension ${dimension}:`, tryError);
+        return null;
       }
-      
-      console.error('Could not determine embedding dimension after trying common values');
-      return null;
     }
   } catch (error) {
     console.error('Error checking collection embedding dimension:', error);
@@ -140,8 +130,8 @@ export async function fixEmbeddingDimension(collectionName, dimension) {
     // Create embedding function with explicit dimension
     const embeddingFunction = new OllamaEmbeddingFunction({
       url: process.env.OLLAMA_HOST || "http://localhost:11434",
-      model: process.env.OLLAMA_EMBEDDING_MODEL || "llama3:7b",
-      dimensions: dimension
+      model: "llama3.2:1b",
+      dimensions: 384
     });
     
     // Check if collection exists

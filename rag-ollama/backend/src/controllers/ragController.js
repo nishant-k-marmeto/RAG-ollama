@@ -263,7 +263,7 @@ export const syncUtilsDataFiles = async (req, res) => {
       // If the embedding dimension doesn't match what we're using in our code, let the user know
       if (embeddingDimension !== 384) {
         console.log(`⚠️ WARNING: Collection uses ${embeddingDimension}-dimensional embeddings, but our configuration uses 384-dimensional embeddings.`);
-        console.log(`Run 'npm run fix:chroma-dimensions:${embeddingDimension}' to fix this discrepancy.`);
+        console.log(`Run 'npm run fix:chroma-dimensions' to fix this discrepancy.`);
       }
     }
     
