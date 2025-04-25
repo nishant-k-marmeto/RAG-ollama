@@ -162,6 +162,50 @@ process.on('SIGTERM', () => {
 });
 
 /**
+ * Generate a response using RAG (Retrieval Augmented Generation)
+ * @param {string} query - User query
+ * @param {Array} documents - Legacy documents (used as fallback)
+ * @returns {Object} - Response with answer and documents used
+ */
+async function generateResponse(query, documents) {
+  try {
+    console.log(`RAGService: Generating response for query: "${query.substring(0, 50)}${query.length > 50 ? '...' : ''}"`);
+    
+    // Use the queryWithContext function for implementation
+    const result = await queryWithContext(query);
+    
+    return {
+      answer: result.answer,
+      documents: result.sources
+    };
+  } catch (error) {
+    console.error('RAGService: Error generating response:', error);
+    throw new Error('Failed to generate response: ' + error.message);
+  }
+}
+
+/**
+ * Generate a streaming response using RAG
+ * @param {string} query - User query
+ * @param {Array} documents - Legacy documents (used as fallback)
+ * @param {Function} onChunk - Callback for each chunk received
+ * @returns {Array} - Info about documents used
+ */
+async function streamGenerateResponse(query, documents, onChunk) {
+  try {
+    console.log(`RAGService: Generating streaming response for query: "${query.substring(0, 50)}${query.length > 50 ? '...' : ''}"`);
+    
+    // Use streamQueryWithContext implementation
+    const result = await streamQueryWithContext(query, 3, onChunk);
+    
+    return result.sources;
+  } catch (error) {
+    console.error('RAGService: Error generating streaming response:', error);
+    throw new Error('Failed to generate streaming response: ' + error.message);
+  }
+}
+
+/**
  * Query the LLM with context from ChromaDB
  * @param {string} userQuery The user's query
  * @param {number} numResults Number of results to fetch from ChromaDB
@@ -367,5 +411,7 @@ export {
   queryWithContext,
   streamQueryWithContext,
   ensureOllamaConnection,
-  warmupAllModels
+  warmupAllModels,
+  generateResponse,
+  streamGenerateResponse
 }; 
