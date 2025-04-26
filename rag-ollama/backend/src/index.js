@@ -76,11 +76,32 @@ app.use((err, req, res, next) => {
   });
 });
 
+
+//preloading module
+const warmupModel = async () => {
+  try {
+    console.log('Hi Nishant k tiwary Warming up LLaMA model...');
+    await fetch('http://localhost:11434/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'llama3.2-1b',
+        prompt: 'Hello',
+        stream: false
+      }),
+    });
+    console.log('hi nishant k tiwary model is loaded into memory');
+  } catch (err) {
+    console.error('❌ Warm-up failed:', err.message);
+  }
+};
+
+
 // Start server
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
-  
+  warmupModel();
   // Check ChromaDB status when the server starts
   await checkChromaDBHealth();
   
