@@ -5,6 +5,7 @@ import { OllamaEmbeddingFunction } from './ollamaEmbeddings.js';
 const client = new ChromaClient({
   path: process.env.CHROMA_URL || "http://localhost:8000",
   apiPath: process.env.CHROMA_API_PATH || "/api/v2",
+  tenantName: "default_tenant" // Explicitly set tenant name
 });
 
 // Initialize the Ollama embedding function

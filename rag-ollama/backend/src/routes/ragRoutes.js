@@ -25,6 +25,7 @@ router.use(logRoute);
 
 // Document management routes - essential only
 router.post('/add-document', ragController.addDocument);
+router.get('/documents', ragController.getDocuments);
 router.post('/sync-utils-data', ragController.syncUtilsDataFiles);
 router.delete('/documents', ragController.deleteAllDocuments);
 

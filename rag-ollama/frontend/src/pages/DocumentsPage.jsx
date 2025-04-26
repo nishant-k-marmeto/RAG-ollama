@@ -294,11 +294,11 @@ const DocumentsPage = () => {
       // Use our custom backend endpoint to check ChromaDB status
       const data = await api.getChromaStatus();
       
-      if (data.status === 'connected') {
+      if (data.status === 'ok' || data.status === 'connected') {
         setChromaStatus({
           success: true,
           message: data.message,
-          details: `API Version: ${data.apiVersion || 'Unknown'}, Collections: ${data.collections}, Collection "${data.collection.name}": ${data.collection.exists ? 'Exists' : 'Not found'}, Documents: ${data.collection.documents}`
+          details: `URL: ${data.url}, Collection: ${data.collection}, Document Count: ${data.documentCount}`
         });
       } else {
         setChromaStatus({

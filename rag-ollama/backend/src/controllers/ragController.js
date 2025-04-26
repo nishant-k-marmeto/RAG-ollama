@@ -1,4 +1,4 @@
-import { getOrCreateCollection, deleteAllDocuments as deleteAllChromaDocuments } from '../utils/chromadb.js';
+import { getOrCreateCollection, deleteAllDocuments as deleteAllChromaDocuments, getAllDocuments } from '../utils/chromadb.js';
 import { addFilesToCollection } from '../utils/data_loader.js';
 import { queryDocuments } from '../services/documentService.js';
 import fs from 'fs';
@@ -8,6 +8,51 @@ import axios from 'axios';
 
 // Collection name for ChromaDB
 const COLLECTION_NAME = 'rag_documents';
+
+/**
+ * Get all documents from the knowledge base
+ */
+export const getDocuments = async (req, res) => {
+  try {
+    console.log('Fetching all documents from ChromaDB');
+    
+    try {
+      // Get collection
+      const collection = await getOrCreateCollection(COLLECTION_NAME);
+      
+      // Get all documents
+      const allDocuments = await getAllDocuments(collection);
+      
+      // Format documents for frontend
+      const documents = [];
+      
+      if (allDocuments && allDocuments.ids && allDocuments.ids.length > 0) {
+        for (let i = 0; i < allDocuments.ids.length; i++) {
+          documents.push({
+            id: allDocuments.ids[i],
+            title: allDocuments.metadatas[i].source || `Document ${i+1}`,
+            content: allDocuments.documents[i],
+            createdAt: allDocuments.metadatas[i].created || allDocuments.metadatas[i].timestamp || new Date().toISOString()
+          });
+        }
+      }
+      
+      return res.status(200).json({ 
+        documents,
+        count: documents.length
+      });
+    } catch (error) {
+      console.error('Error fetching documents from ChromaDB:', error);
+      return res.status(500).json({ 
+        error: 'Failed to fetch documents', 
+        message: error.message 
+      });
+    }
+  } catch (error) {
+    console.error('Error in getDocuments endpoint:', error);
+    return res.status(500).json({ error: 'Failed to process request' });
+  }
+};
 
 /**
  * Add a document directly to the knowledge base

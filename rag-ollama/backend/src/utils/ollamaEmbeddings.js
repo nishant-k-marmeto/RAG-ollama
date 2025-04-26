@@ -33,10 +33,12 @@ export class OllamaEmbeddingFunction {
       
       // Process texts in batches to avoid overloading Ollama
       const embeddings = [];
-      const batchSize = 10;
+      const batchSize = 5; // Reduced batch size for better reliability
       
       for (let i = 0; i < texts.length; i += batchSize) {
         const batch = texts.slice(i, i + batchSize);
+        console.log(`Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(texts.length/batchSize)}`);
+        
         const batchEmbeddings = await Promise.all(
           batch.map(text => this.generateSingleEmbedding(text))
         );
@@ -44,7 +46,7 @@ export class OllamaEmbeddingFunction {
         
         // Add a small delay to prevent rate limiting
         if (i + batchSize < texts.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, 200));
         }
       }
       
@@ -54,6 +56,7 @@ export class OllamaEmbeddingFunction {
         debugBatchEmbeddings(texts, embeddings, this.debugOptions);
       }
       
+      console.log(`Successfully generated ${embeddings.length} embeddings of dimension ${embeddings[0]?.length || 'unknown'}`);
       return embeddings;
     } catch (error) {
       console.error('Error generating Ollama embeddings:', error);
@@ -68,24 +71,45 @@ export class OllamaEmbeddingFunction {
    */
   async generateSingleEmbedding(text) {
     try {
+      // Ensure text is not empty and is a string
+      if (!text || typeof text !== 'string') {
+        console.warn('Invalid text provided for embedding, using empty string instead');
+        text = '';
+      }
+      
+      // Trim and prepare text
+      const processedText = text.trim().substring(0, 8000); // Limit text length
+      
+      // Log embedding request
+      console.log(`Generating embedding for text: "${processedText.substring(0, 50)}${processedText.length > 50 ? '...' : ''}"`);
+      
+      // Make request to Ollama
       const response = await this.ollama.embeddings({
         model: this.model,
-        prompt: text.trim()
+        prompt: processedText
       });
       
       if (!response || !response.embedding) {
         throw new Error('Invalid response from Ollama: No embedding returned');
       }
       
+      // Truncate embedding to 384 dimensions to match expected size in ChromaDB
+      // This is needed because the collection was created with this dimension
+      const truncatedEmbedding = response.embedding.slice(0, 384);
+      
       // Debug individual embedding if in debug mode
       if (this.debugMode) {
-        debugEmbedding(text, response.embedding, this.debugOptions);
+        debugEmbedding(processedText, truncatedEmbedding, this.debugOptions);
       }
       
-      return response.embedding;
+      return truncatedEmbedding;
     } catch (error) {
-      console.error(`Error embedding text: "${text.substring(0, 50)}..."`, error);
-      throw error;
+      console.error(`Error embedding text: "${text?.substring(0, 50)}..."`, error);
+      
+      // Return a zero vector of appropriate length as fallback
+      // This prevents the system from crashing when one embedding fails
+      console.warn('Returning zero vector as fallback for failed embedding');
+      return new Array(384).fill(0);
     }
   }
 

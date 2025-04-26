@@ -1,11 +1,11 @@
 import { Ollama } from 'ollama';
 import { getOrCreateCollection, queryCollection } from '../utils/chromadb.js';
 
-// Global Ollama client instance
-let ollamaClient = null;
-
 // Collection name for ChromaDB
-const COLLECTION_NAME = 'chat_history';
+const COLLECTION_NAME = 'rag_documents';
+
+// Global reference for the Ollama client
+let ollamaClient = null;
 
 /**
  * Get or create an Ollama client with connection pooling
@@ -97,11 +97,25 @@ After you've worked through your reasoning, provide a clear, concise answer.`;
     
     try {
       console.log('Querying ChromaDB for relevant documents...');
+      console.log(`Collection name: ${COLLECTION_NAME}`);
+      console.log(`Query text: "${userMessage.substring(0, 100)}${userMessage.length > 100 ? '...' : ''}"`);
+      
       const startQueryTime = Date.now();
       const collection = await getOrCreateCollection(COLLECTION_NAME);
+      
+      // Log collection information
+      console.log(`Collection object received: ${collection ? 'yes' : 'no'}`);
+      
       const results = await queryCollection(collection, 3, [userMessage]);
       const endQueryTime = Date.now();
+      
       console.log(`ChromaDB query completed in ${endQueryTime - startQueryTime}ms`);
+      console.log('Query results structure:', 
+        results ? 
+        `ids: ${results.ids ? 'present' : 'missing'}, ` +
+        `documents: ${results.documents ? 'present' : 'missing'}, ` +
+        `metadatas: ${results.metadatas ? 'present' : 'missing'}` : 
+        'null');
       
       if (results && results.documents && results.documents[0] && results.documents[0].length > 0) {
         console.log(`Found ${results.documents[0].length} relevant documents`);
